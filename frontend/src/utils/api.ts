@@ -20,7 +20,7 @@ export const api = axios.create({
 
 // Add auth token to requests
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('svl_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -40,7 +40,8 @@ api.interceptors.response.use(
   (error) => {
     console.error('API Error:', error.message, error.config?.url);
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
+      localStorage.removeItem('svl_token');
+      localStorage.removeItem('svl_user');
       window.location.href = '/login';
     }
     return Promise.reject(error);
