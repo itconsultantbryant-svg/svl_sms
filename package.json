@@ -1,18 +1,12 @@
 {
   "name": "svl-sms",
   "version": "1.0.0",
-  "description": "Softwarevala Liberia School Management System",
+  "description": "SVL School Management System",
   "private": true,
   "scripts": {
-    "install:all": "cd backend && npm install && cd ../frontend && npm install",
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm run dev",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "build": "cd frontend && npm run build",
-    "seed": "cd backend && npm run db:seed",
-    "start": "cd backend && npm start"
-  },
-  "devDependencies": {
-    "concurrently": "^8.2.2"
+    "backend:dev": "cd backend && npm run dev",
+    "frontend:dev": "cd frontend && npm run dev",
+    "backend:build": "cd backend && npm install && npm run build",
+    "frontend:build": "cd frontend && npm install && npm run build"
   }
 }
