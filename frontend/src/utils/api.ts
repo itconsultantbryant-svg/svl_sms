@@ -21,6 +21,13 @@ export const api = axios.create({
 // Add auth token to requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('svl_token');
+  console.log('🔑 Interceptor check:', {
+    hasToken: !!token,
+    tokenPreview: token ? token.substring(0, 20) + '...' : 'null',
+    url: config.url,
+    currentAuth: config.headers.Authorization
+  });
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
