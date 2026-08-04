@@ -43,6 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       localStorage.setItem('svl_token', res.data.token);
       localStorage.setItem('svl_user', JSON.stringify(res.data.user));
+
+      // CRITICAL: Immediately set the auth header for subsequent requests
+      api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
+
       console.log('💾 Saved to localStorage:', {
         token: localStorage.getItem('svl_token')?.substring(0, 20) + '...',
         user: localStorage.getItem('svl_user')
