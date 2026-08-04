@@ -12,13 +12,15 @@ authRouter.post('/login', async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
 
+    console.log('Login attempt:', { username });
+
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
     const db = getDatabase();
 
-    // Get user with role information - FIXED column names
+    // FIXED: Use correct column names from database schema
     const user = db.prepare(`
       SELECT u.*,
              r.role_code, r.role_name,
@@ -32,15 +34,21 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     `).get(username) as any;
 
     if (!user) {
+      console.log('User not found:', username);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Verify password - using password_hash column
+    console.log('User found:', { username: user.username, hasPassword: !!user.password_hash });
+
+    // FIXED: Use password_hash column
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
 
     if (!isValidPassword) {
+      console.log('Invalid password for:', username);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+
+    console.log('Login successful:', username);
 
     // Generate JWT token
     const token = jwt.sign(
