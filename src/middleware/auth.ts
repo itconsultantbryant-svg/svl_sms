@@ -74,7 +74,7 @@ export function authorize(...roles: string[]) {
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
-    if (roles.length > 0 && !roles.includes(req.user.role_code)) {
+    if (roles.length > 0 && !roles.includes(req.user.role_code || '')) {
       res.status(403).json({ error: 'Insufficient permissions' });
       return;
     }
