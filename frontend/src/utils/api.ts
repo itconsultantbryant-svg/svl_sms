@@ -1,42 +1,46 @@
 import axios from 'axios';
 
-const api = axios.create({
-  baseURL: '/api',
-  headers: { 'Content-Type': 'application/json' },
+// CRITICAL: Vite requires import.meta.env for environment variables
+const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+// Debug logging
+console.log('=== API CONFIGURATION ===');
+console.log('Environment:', import.meta.env.MODE);
+console.log('VITE_API_URL from env:', import.meta.env.VITE_API_URL);
+console.log('Using baseURL:', baseURL);
+console.log('========================');
+
+export const api = axios.create({
+  baseURL: baseURL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 30000,
 });
 
+// Add auth token to requests
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('svl_token');
+  const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  // Add institution header for platform admins
-  const userStr = localStorage.getItem('svl_user');
-  if (userStr) {
-    try {
-      const user = JSON.parse(userStr);
-      if (user.user_type === 'platform_admin') {
-        const instStr = localStorage.getItem('svl_selected_institution');
-        if (instStr) {
-          const inst = JSON.parse(instStr);
-          config.headers['X-Institution-ID'] = inst.id;
-        }
-      }
-    } catch (error) {
-      console.error('Failed to parse user data:', error);
-    }
+  const institutionId = localStorage.getItem('institution_id');
+  if (institutionId) {
+    config.headers['X-Institution-ID'] = institutionId;
   }
 
+  console.log('API Request:', config.method?.toUpperCase(), config.baseURL + config.url);
   return config;
 });
 
+// Handle auth errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    console.error('API Error:', error.message, error.config?.url);
     if (error.response?.status === 401) {
-      localStorage.removeItem('svl_token');
-      localStorage.removeItem('svl_user');
+      localStorage.removeItem('token');
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -44,4 +48,3 @@ api.interceptors.response.use(
 );
 
 export default api;
-// Updated Tue Aug  4 10:46:44 GMT 2026
