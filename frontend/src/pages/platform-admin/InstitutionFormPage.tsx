@@ -33,6 +33,8 @@ export default function InstitutionFormPage() {
   const isEdit = Boolean(id);
 
   const [loading, setLoading] = useState(false);
+  const [showCredentials, setShowCredentials] = useState(false);
+  const [credentials, setCredentials] = useState<any>(null);
   const [formData, setFormData] = useState<InstitutionFormData>({
     institution_code: '',
     institution_name: '',
@@ -105,7 +107,13 @@ export default function InstitutionFormPage() {
         delete (payload as any).admin_first_name;
         delete (payload as any).admin_last_name;
 
-        await api.post('/platform-admin/institutions', payload);
+        const response = await api.post('/platform-admin/institutions', payload);
+        // Show credentials modal
+        if (response.data.admin_credentials) {
+          setCredentials(response.data.admin_credentials);
+          setShowCredentials(true);
+          return; // Don't navigate yet
+        }
       }
       navigate('/platform-admin/institutions');
     } catch (error: any) {
@@ -465,6 +473,65 @@ export default function InstitutionFormPage() {
           </button>
         </div>
       </form>
+
+      {/* Credentials Modal */}
+      {showCredentials && credentials && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mx-auto">
+                <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+              </div>
+              <h3 className="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
+                Institution Created Successfully!
+              </h3>
+              <div className="mt-4 px-7 py-3 bg-yellow-50 border border-yellow-200 rounded">
+                <p className="text-sm text-yellow-800 font-semibold mb-2">
+                  Share these credentials with the institution administrator:
+                </p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Username:</span>
+                    <span className="font-mono font-semibold">{credentials.username}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Password:</span>
+                    <span className="font-mono font-semibold">{credentials.password}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Email:</span>
+                    <span className="font-mono font-semibold text-xs">{credentials.email}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-yellow-700 mt-3">
+                  ⚠️ Save these credentials now! They won't be shown again.
+                </p>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `Username: ${credentials.username}\nPassword: ${credentials.password}\nEmail: ${credentials.email}`
+                    );
+                    alert('Credentials copied to clipboard!');
+                  }}
+                  className="flex-1 px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600"
+                >
+                  Copy Credentials
+                </button>
+                <button
+                  onClick={() => navigate('/platform-admin/institutions')}
+                  className="flex-1 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

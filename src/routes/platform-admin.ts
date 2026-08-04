@@ -272,12 +272,18 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
   try {
     transaction();
 
+    // Return credentials so superadmin can share with institution admin
     res.status(201).json({
       id: institutionId,
       institution_code,
       institution_name,
       admin_user_id: adminUserId,
-      message: 'Institution created successfully'
+      admin_credentials: {
+        username: admin_user.username,
+        password: admin_user.password || 'admin123',
+        email: admin_user.email
+      },
+      message: 'Institution created successfully. Share these credentials with the institution administrator.'
     });
   } catch (error: any) {
     console.error('Institution creation error:', error);
