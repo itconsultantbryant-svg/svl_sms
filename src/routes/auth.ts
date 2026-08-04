@@ -7,7 +7,7 @@ export const authRouter = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
-// Login endpoint - POST method
+// Login endpoint
 authRouter.post('/login', async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
@@ -18,11 +18,12 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
     const db = getDatabase();
 
-    // Get user with role information
+    // Get user with role information - FIXED column names
     const user = db.prepare(`
-      SELECT u.*, r.code as role_code, r.name as role_name,
-             i.name as institution_name, i.code as institution_code,
-             b.branch_name as branch_name
+      SELECT u.*,
+             r.role_code, r.role_name,
+             i.institution_name, i.institution_code,
+             b.branch_name
       FROM users u
       LEFT JOIN roles r ON u.role_id = r.id
       LEFT JOIN institutions i ON u.institution_id = i.id
@@ -34,8 +35,8 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    // Verify password - using password_hash column
+    const isValidPassword = await bcrypt.compare(password, user.password_hash);
 
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -80,7 +81,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
   }
 });
 
-// Get current user - GET method
+// Get current user
 authRouter.get('/me', async (req: Request, res: Response) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
@@ -93,9 +94,10 @@ authRouter.get('/me', async (req: Request, res: Response) => {
     const db = getDatabase();
 
     const user = db.prepare(`
-      SELECT u.*, r.code as role_code, r.name as role_name,
-             i.name as institution_name, i.code as institution_code,
-             b.branch_name as branch_name
+      SELECT u.*,
+             r.role_code, r.role_name,
+             i.institution_name, i.institution_code,
+             b.branch_name
       FROM users u
       LEFT JOIN roles r ON u.role_id = r.id
       LEFT JOIN institutions i ON u.institution_id = i.id
@@ -135,7 +137,7 @@ authRouter.get('/me', async (req: Request, res: Response) => {
   }
 });
 
-// Logout endpoint - POST method
+// Logout endpoint
 authRouter.post('/logout', (req: Request, res: Response) => {
   res.json({ message: 'Logged out successfully' });
 });
