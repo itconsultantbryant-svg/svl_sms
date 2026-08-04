@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: svl-sms-backend
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+    disk:
+      name: svl-sms-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
