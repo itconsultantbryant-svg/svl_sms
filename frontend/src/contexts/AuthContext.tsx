@@ -31,10 +31,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (username: string, password: string) => {
-    const res = await api.post('/auth/login', { username, password });
-    localStorage.setItem('svl_token', res.data.token);
-    localStorage.setItem('svl_user', JSON.stringify(res.data.user));
-    setUser(res.data.user);
+    try {
+      console.log('🔐 Login attempt:', username);
+      const res = await api.post('/auth/login', { username, password });
+      console.log('✅ Login response received:', { hasToken: !!res.data.token, hasUser: !!res.data.user });
+
+      if (!res.data.token) {
+        console.error('❌ No token in response:', res.data);
+        throw new Error('No token received from server');
+      }
+
+      localStorage.setItem('svl_token', res.data.token);
+      localStorage.setItem('svl_user', JSON.stringify(res.data.user));
+      console.log('💾 Saved to localStorage:', {
+        token: localStorage.getItem('svl_token')?.substring(0, 20) + '...',
+        user: localStorage.getItem('svl_user')
+      });
+
+      setUser(res.data.user);
+      console.log('✅ Login complete');
+    } catch (error) {
+      console.error('❌ Login error:', error);
+      throw error;
+    }
   };
 
   const logout = () => {
