@@ -85,3 +85,73 @@ export function authorize(...roles: string[]) {
 export function generateToken(userId: string): string {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '24h' });
 }
+
+// Permission-based authorization
+export function requirePermission(...permissions: string[]) {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    // Platform admins and institution admins have all permissions
+    if (req.user.user_type === 'platform_admin' || req.user.user_type === 'institution_admin') {
+      next();
+      return;
+    }
+
+    // Get user's role permissions
+    if (!req.user.role_id) {
+      res.status(403).json({ error: 'No role assigned' });
+      return;
+    }
+
+    const db = getDatabase();
+    const role = db.prepare(`
+      SELECT permissions FROM roles WHERE id = ?
+    `).get(req.user.role_id) as any;
+
+    if (!role || !role.permissions) {
+      res.status(403).json({ error: 'No permissions found' });
+      return;
+    }
+
+    const userPermissions = JSON.parse(role.permissions) as string[];
+
+    // Check if user has any of the required permissions
+    const hasPermission = permissions.some(perm => userPermissions.includes(perm));
+
+    if (!hasPermission) {
+      res.status(403).json({
+        error: 'Insufficient permissions',
+        required: permissions,
+        message: 'You do not have permission to perform this action'
+      });
+      return;
+    }
+
+    next();
+  };
+}
+
+// Check if user has specific permission (for conditional logic)
+export function hasPermission(req: AuthRequest, permission: string): boolean {
+  if (!req.user) return false;
+
+  // Platform admins and institution admins have all permissions
+  if (req.user.user_type === 'platform_admin' || req.user.user_type === 'institution_admin') {
+    return true;
+  }
+
+  if (!req.user.role_id) return false;
+
+  const db = getDatabase();
+  const role = db.prepare(`
+    SELECT permissions FROM roles WHERE id = ?
+  `).get(req.user.role_id) as any;
+
+  if (!role || !role.permissions) return false;
+
+  const userPermissions = JSON.parse(role.permissions) as string[];
+  return userPermissions.includes(permission);
+}
