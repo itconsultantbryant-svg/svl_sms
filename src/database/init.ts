@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { schemaV2Consolidated } from './schema-v2-consolidated';
+import { homeworkAssignmentsSchema } from './schema-homework-assignments';
 
 let db: Database.Database;
 
@@ -21,6 +22,9 @@ export function initializeDatabase(): void {
   // This includes ALL tables from all phases with institution_id for tenant isolation
   database.exec(schemaV2Consolidated);
 
+  // Execute homework & assignments schema
+  database.exec(homeworkAssignmentsSchema);
+
   console.log('✓ Multi-tenant database initialized successfully');
-  console.log('✓ 98 tables created with tenant isolation');
+  console.log('✓ Database schema with homework/assignments system created');
 }
