@@ -4,7 +4,7 @@ services:
     runtime: node
     region: oregon
     plan: standard
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -44,7 +44,7 @@ services:
     runtime: static site
     region: oregon
     plan: standard
-    buildCommand: cd frontend && npm install && npm run build
+    buildCommand: cd frontend && npm ci && npm run build
     staticPublishPath: frontend/dist
     routes:
       - path: /*
