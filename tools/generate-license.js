@@ -178,33 +178,26 @@ function generateLicenseKey(data) {
   const institutionCode = institutionToCode(data.institution);
   const expiryTime = Math.floor(new Date(data.expiry).getTime() / 1000);
   const planCode = planToCode(data.plan);
-  const machineIdHash = data.machineId
-    ? crypto.createHash('sha256').update(data.machineId).digest('hex').slice(0, 8)
-    : '00000000';
 
-  // Create data string with all hex-encoded parts
-  const institutionHex = Buffer.from(institutionCode.padEnd(4, ' ')).toString('hex');
-  const expiryHex = expiryTime.toString(16).padStart(8, '0');
-  const planHex = planCode.charCodeAt(0).toString(16).padStart(2, '0');
+  // Create a simple data payload: "INST+EXPIRY+PLAN"
+  // Example: "LHSX+6d16ce80+1"
+  const dataPayload = `${institutionCode}+${expiryTime.toString(16)}+${planCode}`;
+  const dataBuffer = Buffer.from(dataPayload, 'utf8');
 
-  const dataHexString = institutionHex + expiryHex + planHex + machineIdHash;
-  const dataBuffer = Buffer.from(dataHexString, 'hex');
-
+  // Sign the data
   const sign = crypto.createSign('sha256');
   sign.update(dataBuffer);
   const signature = sign.sign(PRIVATE_KEY, 'hex');
 
-  const signatureBigInt = BigInt('0x' + signature.slice(0, 32));
-  let checksumBase62 = base62Encode(signatureBigInt);
-  checksumBase62 = checksumBase62.slice(0, 12).padEnd(12, '0');
+  // Encode data and signature to base62
+  const dataBase62 = base62Encode(BigInt('0x' + crypto.createHash('sha256').update(dataPayload).digest('hex')));
+  const sigBase62 = base62Encode(BigInt('0x' + signature.slice(0, 32)));
 
-  const dataBigInt = BigInt('0x' + dataHexString);
-  const dataBase62 = base62Encode(dataBigInt).padStart(16, '0');
-
-  const segment1 = dataBase62.slice(0, 4);
-  const segment2 = dataBase62.slice(4, 8);
-  const segment3 = dataBase62.slice(8, 12);
-  const segment4 = checksumBase62.slice(0, 4);
+  // Build segments (each 4 chars base62)
+  const segment1 = dataBase62.padStart(12, '0').slice(0, 4);
+  const segment2 = dataBase62.padStart(12, '0').slice(4, 8);
+  const segment3 = dataBase62.padStart(12, '0').slice(8, 12);
+  const segment4 = sigBase62.padStart(20, '0').slice(0, 4);
 
   return `SVL-${segment1}-${segment2}-${segment3}-${segment4}`;
 }
@@ -214,29 +207,19 @@ function decodeLicenseKey(key) {
     return null;
   }
 
-  const parts = key.split('-');
-  const segment1 = parts[1];
-  const segment2 = parts[2];
-  const segment3 = parts[3];
+  // Look up the key in the database
+  const keys = loadGeneratedKeys();
+  const keyRecord = keys.find(k => k.key === key);
 
-  try {
-    const dataHex = (base62Decode(segment1 + segment2 + segment3).toString(16)).padStart(24, '0');
-
-    const institutionCode = Buffer.from(dataHex.slice(0, 8), 'hex').toString('utf8').trim();
-    const expiryTime = parseInt(dataHex.slice(8, 16), 16);
-    const planCode = dataHex.slice(16, 17);
-
-    const expiryDate = new Date(expiryTime * 1000).toISOString().split('T')[0];
-    const plan = codeToPlan(planCode);
-
+  if (keyRecord) {
     return {
-      institution: institutionCode,
-      expiry: expiryDate,
-      plan: plan,
+      institution: keyRecord.institution,
+      expiry: keyRecord.expiry,
+      plan: keyRecord.plan,
     };
-  } catch (e) {
-    return null;
   }
+
+  return null;
 }
 
 // ============================================================================
