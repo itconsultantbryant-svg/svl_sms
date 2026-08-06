@@ -27,13 +27,6 @@ export interface AuthRequest extends Request {
     license_id?: string;
   };
   institution_id?: string | null;
-  query?: any;
-  params?: any;
-  body?: any;
-  headers?: any;
-  path?: string;
-  method?: string;
-  ip?: string;
 }
 
 export function authenticate(req: AuthRequest, res: Response, next: NextFunction): void {
