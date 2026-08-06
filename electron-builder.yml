@@ -17,6 +17,8 @@ files:
   - '!node_modules/electron{,/**/*}'
   - '!node_modules/electron-builder{,/**/*}'
   - '!node_modules/archiver{,/**/*}'
+  - '!node_modules/concurrently{,/**/*}'
+  - '!node_modules/wait-on{,/**/*}'
   - '!node_modules/**/{test,tests,docs,examples,example}{,/**/*}'
   - '!node_modules/**/*.md'
   - '!node_modules/**/CHANGELOG*'
@@ -25,10 +27,11 @@ extraMetadata:
   main: dist/electron/main.js
 
 asar: true
-# Only unpack native binaries. Keep JS (backend + node_modules) inside asar
-# so require('express') etc. resolve correctly when spawned with ELECTRON_RUN_AS_NODE.
+# Backend must run as a real child process (cannot spawn paths inside app.asar).
+# Unpack backend + node_modules onto disk so require('express') works.
 asarUnpack:
-  - '**/*.node'
+  - dist/backend/**/*
+  - node_modules/**/*
 
 # Windows — classic Setup.exe installer (zipped after build for distribution)
 win:
@@ -37,7 +40,6 @@ win:
       arch:
         - x64
   artifactName: SVL-SMS-Setup-${version}.${ext}
-  # Unsigned builds still produce a working installer (SmartScreen may warn)
 
 nsis:
   oneClick: false

@@ -38,6 +38,18 @@ function logMessage(message: string, level: 'info' | 'warn' | 'error' = 'info') 
 }
 
 /**
+ * On-disk app root for packaged builds.
+ * app.getAppPath() points at app.asar (a file) — cannot be used as cwd or spawn target.
+ */
+function getUnpackedAppRoot(): string {
+  const appPath = app.getAppPath();
+  if (appPath.includes('app.asar')) {
+    return appPath.replace(/app\.asar.*/, 'app.asar.unpacked');
+  }
+  return appPath;
+}
+
+/**
  * Find an available port starting from the given port
  */
 function findAvailablePort(startPort: number): Promise<number> {
@@ -66,21 +78,28 @@ function findAvailablePort(startPort: number): Promise<number> {
  * Spawn the Node.js backend process
  */
 async function spawnBackend(): Promise<number> {
+  let lastBackendError = '';
+
   try {
     const port = await findAvailablePort(3001);
     logMessage(`Starting backend on port ${port}`);
 
+    const unpackedRoot = isDev ? path.join(__dirname, '..') : getUnpackedAppRoot();
     const backendPath = isDev
       ? path.join(__dirname, '../src/index.ts')
-      : path.join(app.getAppPath(), 'dist', 'backend', 'index.js');
+      : path.join(unpackedRoot, 'dist', 'backend', 'index.js');
 
     logMessage(`Backend entry: ${backendPath}`);
+    logMessage(`Backend cwd: ${unpackedRoot}`);
+
+    if (!isDev && !fs.existsSync(backendPath)) {
+      throw new Error(`Backend file missing: ${backendPath}`);
+    }
 
     const env: NodeJS.ProcessEnv = { ...process.env };
     env.NODE_ENV = isDev ? 'development' : 'production';
     env.PORT = port.toString();
     env.CORS_ORIGINS = 'http://localhost:*,app://localhost,file://*';
-    // Keep SQLite writable outside the read-only app bundle
     env.DB_PATH = path.join(app.getPath('userData'), 'svl-sms.db');
 
     let command: string;
@@ -90,31 +109,19 @@ async function spawnBackend(): Promise<number> {
       command = 'tsx';
       args = ['watch', backendPath];
     } else {
-      // Use Electron binary as Node so packaged apps don't need system Node
       command = process.execPath;
       args = [backendPath];
       env.ELECTRON_RUN_AS_NODE = '1';
-
-      // Ensure deps resolve from app.asar/node_modules (and any unpacked natives)
-      const appPath = app.getAppPath();
-      const unpackedRoot = appPath.includes('app.asar')
-        ? appPath.replace('app.asar', 'app.asar.unpacked')
-        : appPath;
-      env.NODE_PATH = [
-        path.join(appPath, 'node_modules'),
-        path.join(unpackedRoot, 'node_modules'),
-      ].join(path.delimiter);
+      env.NODE_PATH = path.join(unpackedRoot, 'node_modules');
     }
 
     backendProcess = spawn(command, args, {
       env,
-      cwd: isDev ? path.join(__dirname, '..') : app.getAppPath(),
+      cwd: unpackedRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
-      // Keep attached so the backend dies with the app and inherits asar support cleanly
       detached: false,
     });
 
-    // Handle backend output
     if (backendProcess.stdout) {
       backendProcess.stdout.on('data', (data) => {
         logMessage(`Backend: ${data.toString().trim()}`, 'info');
@@ -123,11 +130,14 @@ async function spawnBackend(): Promise<number> {
 
     if (backendProcess.stderr) {
       backendProcess.stderr.on('data', (data) => {
-        logMessage(`Backend Error: ${data.toString().trim()}`, 'error');
+        const text = data.toString().trim();
+        lastBackendError = text;
+        logMessage(`Backend Error: ${text}`, 'error');
       });
     }
 
     backendProcess.on('error', (err) => {
+      lastBackendError = err.message;
       logMessage(`Failed to start backend: ${err.message}`, 'error');
     });
 
@@ -136,26 +146,31 @@ async function spawnBackend(): Promise<number> {
       backendProcess = null;
     });
 
-    // Wait for backend to be ready (max 30 seconds)
     const maxAttempts = 30;
     let attempts = 0;
 
     while (attempts < maxAttempts) {
+      if (!backendProcess) {
+        throw new Error(lastBackendError || 'Backend process exited early');
+      }
+
       try {
         const response = await fetch(`http://localhost:${port}/api/health`);
         if (response.ok) {
           logMessage('Backend is ready');
           return port;
         }
-      } catch (err) {
-        // Backend not ready yet
+      } catch {
+        // not ready yet
       }
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
       attempts++;
     }
 
-    throw new Error('Backend failed to start within timeout');
+    throw new Error(
+      lastBackendError || 'Backend failed to start within timeout'
+    );
   } catch (err) {
     logMessage(`Error spawning backend: ${err}`, 'error');
     throw err;
@@ -174,7 +189,7 @@ async function createWindow(): Promise<void> {
     logMessage(`Failed to start backend: ${err}`, 'error');
     dialog.showErrorBox(
       'Startup Error',
-      'Failed to start the backend service. The application will now exit.'
+      `Failed to start the backend service.\n\n${err instanceof Error ? err.message : String(err)}\n\nSee logs in:\n${logsPath}`
     );
     app.quit();
     return;
