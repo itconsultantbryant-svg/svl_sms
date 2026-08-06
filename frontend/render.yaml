@@ -1,0 +1,60 @@
+services:
+  - type: web
+    name: svl-sms-backend
+    runtime: node
+    region: oregon
+    plan: standard
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: svl_sms_db
+          property: connectionString
+      - key: DB_PATH
+        value: ./data/svl-sms.db
+      - key: JWT_SECRET
+        sync: false
+        value: changeme
+      - key: LICENSE_PRIVATE_KEY
+        sync: false
+        value: changeme
+      - key: CORS_ORIGINS
+        value: https://svl-sms-frontend.onrender.com,https://your-domain.com
+      - key: FRONTEND_URL
+        value: https://svl-sms-frontend.onrender.com
+    healthCheckPath: /api/health
+    healthCheckStartFailureThreshold: 10
+    autoDeploy: true
+    staticPublishPath: dist
+    routes:
+      - path: /api/*
+        destination: /api/*
+    disk:
+      name: svl-sms-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 2
+
+  - type: web
+    name: svl-sms-frontend
+    runtime: static site
+    region: oregon
+    plan: standard
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: frontend/dist
+    routes:
+      - path: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://svl-sms-backend.onrender.com/api
+
+databases:
+  - name: svl_sms_db
+    engine: sqlite
+    version: 3
+    plan: standard
