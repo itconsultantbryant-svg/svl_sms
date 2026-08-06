@@ -24,8 +24,8 @@ WORKDIR /frontend
 # Copy frontend package files
 COPY frontend/package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies (include build tools)
+RUN npm install --include=dev --legacy-peer-deps
 
 # Copy frontend source
 COPY frontend/src ./src

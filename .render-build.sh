@@ -3,9 +3,9 @@ set -e
 
 echo "==> Building SVL-SMS..."
 
-# Install dependencies
+# Install dependencies (include build tools even when NODE_ENV=production)
 echo "==> Installing dependencies..."
-npm ci
+npm install --include=dev
 
 # Build TypeScript backend
 echo "==> Building backend..."
