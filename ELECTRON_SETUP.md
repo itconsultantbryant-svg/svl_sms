@@ -154,13 +154,18 @@ npm run electron-build
 ```
 
 This creates platform-specific installers:
-- **Windows**: `.exe` (NSIS installer) and `.portable.exe`
+- **Windows**: `SVL-SMS-Setup-*.exe` inside `SVL-SMS-*-Windows.zip`
 - **macOS**: `.dmg` and `.zip`
-- **Linux**: `.AppImage` and `.snap`
+- **Linux**: `.AppImage`
 
 ### Platform-Specific Builds
 
-**Windows:**
+**Windows installer + ZIP (offline school install):**
+```bash
+npm run electron-build:win:zip
+```
+
+**Windows installer only:**
 ```bash
 npm run electron-build:win
 ```
@@ -175,23 +180,31 @@ npm run electron-build:mac
 npm run electron-build:linux
 ```
 
-**All Platforms:**
-```bash
-npm run electron-build:all
-```
-
 ### Build Output
 
 Installers are created in the `out/` directory:
+
 ```
 out/
-├── SVL-SMS-1.0.0.exe           (Windows NSIS)
-├── SVL-SMS-1.0.0-portable.exe  (Windows portable)
-├── SVL-SMS-1.0.0.dmg           (macOS)
-├── SVL-SMS-1.0.0.zip           (macOS portable)
-├── SVL-SMS-1.0.0.AppImage      (Linux)
-└── SVL-SMS-1.0.0.snap          (Linux)
+├── SVL-SMS-Setup-1.0.0.exe       # Windows NSIS installer (run after extract)
+├── SVL-SMS-1.0.0-Windows.zip     # Distribution ZIP containing the Setup.exe
+├── SVL-SMS-1.0.0.dmg             # macOS
+├── SVL-SMS-1.0.0.zip             # macOS portable
+└── SVL-SMS-1.0.0.AppImage        # Linux
 ```
+
+**Windows offline school install (recommended):**
+
+```bash
+npm run electron-build:win:zip
+```
+
+1. Share `out/SVL-SMS-1.0.0-Windows.zip` with the school
+2. Extract the ZIP on the Windows PC
+3. Run `SVL-SMS-Setup-1.0.0.exe` and follow the installer wizard
+4. Launch SVL-SMS from the Start Menu / Desktop shortcut
+
+Or build via GitHub Actions: **Actions → Build Windows Offline Installer → Run workflow**, then download the artifact.
 
 ## Code Signing
 

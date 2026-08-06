@@ -57,8 +57,11 @@ cd frontend && npm run dev
 # Production build (creates installers)
 npm run electron-build
 
+# Windows offline ZIP (Setup.exe inside) — for school PCs
+npm run electron-build:win:zip
+
 # Platform-specific builds
-npm run electron-build:win    # Windows
+npm run electron-build:win    # Windows Setup.exe
 npm run electron-build:mac    # macOS
 npm run electron-build:linux  # Linux
 ```

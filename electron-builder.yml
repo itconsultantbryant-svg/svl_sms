@@ -1,102 +1,77 @@
 appId: com.svl-sms.desktop
 productName: SVL-SMS
+copyright: Copyright © SVL-SMS Team
+
 directories:
   buildResources: assets
   output: out
+
 files:
   - dist/electron/**/*
   - dist/frontend/**/*
   - dist/backend/**/*
   - package.json
   - node_modules/**/*
-  - '!node_modules/typescript'
-  - '!node_modules/@types'
-  - '!**/node_modules/*/test'
-  - '!**/node_modules/*/tests'
-  - '!**/node_modules/*/docs'
-  - '!**/node_modules/*/examples'
+  - '!node_modules/typescript{,/**/*}'
+  - '!node_modules/@types{,/**/*}'
+  - '!node_modules/electron{,/**/*}'
+  - '!node_modules/electron-builder{,/**/*}'
+  - '!node_modules/archiver{,/**/*}'
+  - '!node_modules/**/{test,tests,docs,examples,example}{,/**/*}'
+  - '!node_modules/**/*.md'
+  - '!node_modules/**/CHANGELOG*'
 
-# Windows configuration
+extraMetadata:
+  main: dist/electron/main.js
+
+asar: true
+asarUnpack:
+  - '**/*.node'
+  - dist/backend/**/*
+  - node_modules/better-sqlite3/**/*
+
+# Windows — classic Setup.exe installer (zipped after build for distribution)
 win:
   target:
-    - nsis
-    - portable
-    - msi
-  certificateFile: null
-  certificatePassword: null
-  signingHashAlgorithms:
-    - sha256
+    - target: nsis
+      arch:
+        - x64
+  artifactName: SVL-SMS-Setup-${version}.${ext}
+  # Unsigned builds still produce a working installer (SmartScreen may warn)
 
 nsis:
   oneClick: false
+  perMachine: false
   allowToChangeInstallationDirectory: true
+  allowElevation: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: SVL-SMS
+  installerLanguages:
+    - English
+  deleteAppDataOnUninstall: false
+  artifactName: SVL-SMS-Setup-${version}.${ext}
 
-msi:
-  oneClick: false
-
-portable:
-  artifactName: ${productName}-${version}.exe
-
-# macOS configuration
 mac:
   target:
     - dmg
     - zip
   category: public.app-category.business
-  certificateFile: null
-  certificatePassword: null
-  identity: null
   entitlements: electron/entitlements.mac.plist
   entitlementsInherit: electron/entitlements.mac.plist
 
 dmg:
   title: Install ${productName}
-  window:
-    x: 100
-    y: 100
-    width: 512
-    height: 384
-  contents:
-    - x: 256
-      y: 130
-      type: file
-    - x: 256
-      y: 250
-      type: link
-      path: /Applications
 
-# Linux configuration
 linux:
   target:
     - AppImage
-    - snap
   category: Office
-  desktop:
-    Name: SVL-SMS
-    Comment: School Management System
-    Categories: Office;Education;Database;
+  artifactName: ${productName}-${version}.${ext}
 
-appImage:
-  artifactName: ${productName}-${version}.AppImage
-
-snap:
-  publish:
-    provider: github
-
-# Publishing configuration
 publish:
   provider: github
-  owner: svl-sms
-  repo: desktop
+  owner: itconsultantbryant-svg
+  repo: svl_sms
   releaseType: release
   vPrefixedTagName: true
-
-# Auto-update configuration
-update:
-  provider: github
-  owner: svl-sms
-  repo: desktop
-  releaseType: release

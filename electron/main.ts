@@ -1,15 +1,24 @@
 import { app, BrowserWindow, ipcMain, Menu, dialog, shell } from 'electron';
 import isDev from 'electron-is-dev';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import { spawn, ChildProcess } from 'child_process';
 import net from 'net';
 import fs from 'fs';
-import os from 'os';
+
+/** Resolve a path that may live inside app.asar.unpacked */
+function resolveAppResource(...parts: string[]): string {
+  const appPath = app.getAppPath();
+  const base = appPath.includes('app.asar')
+    ? appPath.replace('app.asar', 'app.asar.unpacked')
+    : appPath;
+  return path.join(base, ...parts);
+}
 
 // Keep a global reference of the window object
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
-let updateCheckInterval: NodeJS.Timer | null = null;
+let updateCheckInterval: ReturnType<typeof setInterval> | null = null;
 
 const isWindows = process.platform === 'win32';
 const isMac = process.platform === 'darwin';
@@ -72,15 +81,27 @@ async function spawnBackend(): Promise<number> {
 
     const backendPath = isDev
       ? path.join(__dirname, '../src/index.ts')
-      : path.join(app.getAppPath(), 'dist/backend/index.js');
+      : resolveAppResource('dist', 'backend', 'index.js');
 
     let env = { ...process.env };
     env.NODE_ENV = isDev ? 'development' : 'production';
     env.PORT = port.toString();
     env.CORS_ORIGINS = 'http://localhost:*,app://localhost';
+    // Keep SQLite writable outside the read-only app bundle
+    env.DB_PATH = path.join(app.getPath('userData'), 'svl-sms.db');
 
-    const command = isDev ? 'tsx' : 'node';
-    const args = isDev ? ['watch', backendPath] : [backendPath];
+    let command: string;
+    let args: string[];
+
+    if (isDev) {
+      command = 'tsx';
+      args = ['watch', backendPath];
+    } else {
+      // Use Electron binary as Node so packaged apps don't need system Node
+      command = process.execPath;
+      args = [backendPath];
+      env.ELECTRON_RUN_AS_NODE = '1';
+    }
 
     backendProcess = spawn(command, args, {
       env,
@@ -163,7 +184,6 @@ async function createWindow(): Promise<void> {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      enableRemoteModule: false,
       sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
     },
@@ -174,7 +194,7 @@ async function createWindow(): Promise<void> {
 
   const startUrl = isDev
     ? 'http://localhost:5173' // Vite dev server
-    : `file://${path.join(__dirname, '../frontend/index.html')}`; // Production build
+    : pathToFileURL(path.join(__dirname, '../frontend/index.html')).href;
 
   mainWindow.loadURL(startUrl);
 
@@ -187,9 +207,9 @@ async function createWindow(): Promise<void> {
     mainWindow = null;
   });
 
-  // Handle any unhandled exceptions
-  mainWindow.webContents.on('crashed', () => {
-    logMessage('Frontend crashed', 'error');
+  // Handle renderer process crashes
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    logMessage(`Frontend crashed: ${details.reason}`, 'error');
     dialog.showErrorBox('Application Error', 'The application has crashed. Please restart.');
     app.quit();
   });
@@ -223,7 +243,7 @@ async function checkForUpdates(): Promise<void> {
     const currentVersion = app.getVersion();
 
     const response = await fetch(
-      'https://api.github.com/repos/svl-sms/desktop/releases/latest',
+      'https://api.github.com/repos/itconsultantbryant-svg/svl_sms/releases/latest',
       {
         headers: {
           Accept: 'application/vnd.github.v3+json',
