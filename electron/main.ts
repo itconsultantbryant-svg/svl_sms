@@ -6,15 +6,6 @@ import { spawn, ChildProcess } from 'child_process';
 import net from 'net';
 import fs from 'fs';
 
-/** Resolve a path that may live inside app.asar.unpacked */
-function resolveAppResource(...parts: string[]): string {
-  const appPath = app.getAppPath();
-  const base = appPath.includes('app.asar')
-    ? appPath.replace('app.asar', 'app.asar.unpacked')
-    : appPath;
-  return path.join(base, ...parts);
-}
-
 // Keep a global reference of the window object
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
