@@ -224,7 +224,7 @@ reportsRouter.post('/custom', authorize('platform_admin', 'institution_admin'), 
 });
 
 // Backup Management
-reportsRouter.post('/backup', authorize('super_admin'), (req: AuthRequest, res: Response) => {
+reportsRouter.post('/backup', authorize('platform_admin', 'super_admin'), (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
     const id = generateId();
@@ -243,7 +243,7 @@ reportsRouter.post('/backup', authorize('super_admin'), (req: AuthRequest, res: 
 });
 
 // List Backups
-reportsRouter.get('/backups', authorize('super_admin'), (req: AuthRequest, res: Response) => {
+reportsRouter.get('/backups', authorize('platform_admin', 'super_admin'), (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
     const backups = db.prepare('SELECT * FROM system_backups ORDER BY created_at DESC LIMIT 50').all();
@@ -265,7 +265,7 @@ reportsRouter.get('/bulk-operations', authorize('platform_admin', 'institution_a
 });
 
 // System Health
-reportsRouter.get('/health', authorize('super_admin'), (req: AuthRequest, res: Response) => {
+reportsRouter.get('/health', authorize('platform_admin', 'super_admin'), (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
 

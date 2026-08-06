@@ -19,9 +19,10 @@ studentsRouter.get('/', (req: AuthRequest, res: Response) => {
     search
   );
 
-  // TENANT ISOLATION: Always filter by institution_id
-  let where = 'WHERE s.institution_id = ? ' + searchClause;
-  const params: any[] = [req.institution_id, ...searchParams];
+  // TENANT ISOLATION: Always filter by institution_id (platform admins see all)
+  const institutionFilter = req.institution_id ? `s.institution_id = '${req.institution_id}'` : '1=1';
+  let where = `WHERE ${institutionFilter} ` + searchClause;
+  const params: any[] = [...searchParams];
 
   if (branch) { where += ' AND s.branch_id = ?'; params.push(branch); }
   if (classId) { where += ' AND s.class_id = ?'; params.push(classId); }
@@ -54,7 +55,8 @@ studentsRouter.get('/:id', (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const db = getDatabase();
 
-  // TENANT ISOLATION: Filter by institution_id
+  // TENANT ISOLATION: Filter by institution_id (platform admins see all)
+  const institutionFilter = req.institution_id ? `AND s.institution_id = '${req.institution_id}'` : '';
   const student = db.prepare(`
     SELECT s.*, c.name as class_name, sec.name as section_name, b.branch_name as branch_name,
            ses.name as session_name
@@ -63,25 +65,27 @@ studentsRouter.get('/:id', (req: AuthRequest, res: Response) => {
     LEFT JOIN sections sec ON s.section_id = sec.id
     LEFT JOIN branches b ON s.branch_id = b.id
     LEFT JOIN academic_sessions ses ON s.session_id = ses.id
-    WHERE s.id = ? AND s.institution_id = ?
-  `).get(id, req.institution_id) as any;
+    WHERE s.id = ? ${institutionFilter}
+  `).get(id) as any;
 
   if (!student) {
     res.status(404).json({ error: 'Student not found' });
     return;
   }
 
-  // TENANT ISOLATION: Filter related data
+  // TENANT ISOLATION: Filter related data (platform admins see all)
+  const parentInstitutionFilter = req.institution_id ? `AND p.institution_id = '${req.institution_id}'` : '';
   const parents = db.prepare(`
     SELECT p.*, sp.is_primary
     FROM parents p
     JOIN student_parents sp ON p.id = sp.parent_id
-    WHERE sp.student_id = ? AND p.institution_id = ?
-  `).all(id, req.institution_id);
+    WHERE sp.student_id = ? ${parentInstitutionFilter}
+  `).all(id);
 
+  const docInstitutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
   const documents = db.prepare(
-    'SELECT * FROM student_documents WHERE student_id = ? AND institution_id = ?'
-  ).all(id, req.institution_id);
+    `SELECT * FROM student_documents WHERE student_id = ? ${docInstitutionFilter}`
+  ).all(id);
 
   res.json({ ...student, parents, documents });
 });
@@ -176,10 +180,11 @@ studentsRouter.put('/:id', (req: AuthRequest, res: Response) => {
 
   const db = getDatabase();
 
-  // TENANT ISOLATION: Check student belongs to this institution
+  // TENANT ISOLATION: Check student belongs to this institution (platform admins see all)
+  const institutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
   const student = db.prepare(
-    'SELECT id FROM students WHERE id = ? AND institution_id = ?'
-  ).get(id, req.institution_id);
+    `SELECT id FROM students WHERE id = ? ${institutionFilter}`
+  ).get(id);
 
   if (!student) {
     res.status(404).json({ error: 'Student not found' });

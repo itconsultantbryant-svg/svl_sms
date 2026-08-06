@@ -32,9 +32,14 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  const institutionId = localStorage.getItem('institution_id');
-  if (institutionId) {
-    config.headers['X-Institution-ID'] = institutionId;
+  const storedInstitution = localStorage.getItem('svl_selected_institution');
+  if (storedInstitution) {
+    try {
+      const inst = JSON.parse(storedInstitution);
+      if (inst?.id) {
+        config.headers['X-Institution-ID'] = inst.id;
+      }
+    } catch (e) {}
   }
 
   console.log('API Request:', config.method?.toUpperCase(), config.baseURL + config.url);

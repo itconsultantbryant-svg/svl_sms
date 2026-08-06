@@ -22,13 +22,14 @@ resultsRouter.post('/generate/:examId', authorize('platform_admin', 'institution
   const db = getDatabase();
 
   // TENANT ISOLATION: Filter exam by institution_id
+  const institutionFilterExam = req.institution_id ? `AND e.institution_id = '${req.institution_id}'` : '';
   const exam = db.prepare(`
     SELECT e.*, s.id as sess_id, t.id as trm_id
     FROM exams e
     LEFT JOIN academic_sessions s ON e.session_id = s.id
     LEFT JOIN terms t ON e.term_id = t.id
-    WHERE e.id = ? AND e.institution_id = ?
-  `).get(examId, req.institution_id) as any;
+    WHERE e.id = ? ${institutionFilterExam}
+  `).get(examId) as any;
 
   if (!exam) {
     res.status(404).json({ error: 'Exam not found' });
@@ -36,17 +37,19 @@ resultsRouter.post('/generate/:examId', authorize('platform_admin', 'institution
   }
 
   // TENANT ISOLATION: Filter grade scale by institution_id
+  const institutionFilterGradeScale = req.institution_id ? `AND gs.institution_id = '${req.institution_id}'` : '';
   const gradeScale = db.prepare(`
     SELECT gse.* FROM grade_scale_entries gse
     JOIN grade_scales gs ON gse.grade_scale_id = gs.id
-    WHERE gs.institution_id = ? AND gs.is_default = 1
+    WHERE gs.is_default = 1 ${institutionFilterGradeScale}
     ORDER BY gse.min_percentage DESC
-  `).all(req.institution_id) as any[];
+  `).all() as any[];
 
   // TENANT ISOLATION: Filter students by institution_id
+  const institutionFilterStudents = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
   const students = db.prepare(`
-    SELECT id FROM students WHERE institution_id = ? AND class_id = ? AND (? IS NULL OR section_id = ?) AND status = 'active'
-  `).all(req.institution_id, class_id, section_id || null, section_id || null) as any[];
+    SELECT id FROM students WHERE class_id = ? AND (? IS NULL OR section_id = ?) AND status = 'active' ${institutionFilterStudents}
+  `).all(class_id, section_id || null, section_id || null) as any[];
 
   const transaction = db.transaction(() => {
     for (const student of students) {

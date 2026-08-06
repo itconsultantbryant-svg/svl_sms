@@ -39,6 +39,8 @@ import AdmissionDashboard from './pages/admission/AdmissionDashboard';
 import EnquiriesPage from './pages/admission/EnquiriesPage';
 import EnquiryFormPage from './pages/admission/EnquiryFormPage';
 import ApplicationsPage from './pages/admission/ApplicationsPage';
+import RolesPage from './pages/permissions/RolesPage';
+import AssignmentsPage from './pages/assignments/AssignmentsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -65,41 +67,87 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
+
+                {/* Students */}
                 <Route path="/students" element={<StudentsPage />} />
                 <Route path="/students/new" element={<StudentFormPage />} />
                 <Route path="/students/:id/edit" element={<StudentFormPage />} />
+
+                {/* Parents */}
                 <Route path="/parents" element={<ParentsPage />} />
+
+                {/* Teachers */}
                 <Route path="/teachers" element={<TeachersPage />} />
                 <Route path="/teachers/new" element={<TeacherFormPage />} />
                 <Route path="/teachers/:id/edit" element={<TeacherFormPage />} />
+
+                {/* Academics */}
                 <Route path="/academics/classes" element={<ClassesPage />} />
                 <Route path="/academics/subjects" element={<SubjectsPage />} />
                 <Route path="/academics/sessions" element={<SessionsPage />} />
+
+                {/* Attendance */}
                 <Route path="/attendance" element={<AttendancePage />} />
+
+                {/* Timetable */}
                 <Route path="/timetable" element={<TimetablePage />} />
+
+                {/* Examinations */}
                 <Route path="/examinations" element={<ExamsPage />} />
                 <Route path="/examinations/:examId/schedules" element={<ExamSchedulesPage />} />
                 <Route path="/examinations/:examId/marks" element={<MarksEntryPage />} />
                 <Route path="/examinations/:examId/results" element={<ResultsPage />} />
                 <Route path="/results/report-card/:studentId/:examId" element={<ReportCardPage />} />
+
+                {/* Assignments */}
+                <Route path="/assignments" element={<AssignmentsPage />} />
+
+                {/* Finance */}
                 <Route path="/fees" element={<FeesPage />} />
                 <Route path="/fees/invoices" element={<InvoicesPage />} />
                 <Route path="/fees/payments" element={<PaymentsPage />} />
                 <Route path="/accounts" element={<AccountsPage />} />
+
+                {/* Library */}
                 <Route path="/library" element={<LibraryPage />} />
+
+                {/* Inventory */}
                 <Route path="/inventory" element={<InventoryPage />} />
+
+                {/* Transport */}
                 <Route path="/transport" element={<TransportPage />} />
+
+                {/* Reception */}
                 <Route path="/reception" element={<ReceptionPage />} />
+
+                {/* Certificates */}
                 <Route path="/certificates" element={<CertificatesPage />} />
+
+                {/* HR & Payroll */}
                 <Route path="/payroll" element={<PayrollPage />} />
+
+                {/* Communication */}
                 <Route path="/communication" element={<CommunicationPage />} />
+
+                {/* Reports */}
                 <Route path="/reports" element={<ReportsPage />} />
+
+                {/* Branches */}
                 <Route path="/branches" element={<BranchesPage />} />
+
+                {/* Settings */}
                 <Route path="/settings" element={<SettingsPage />} />
+
+                {/* Roles & Permissions */}
+                <Route path="/permissions/roles" element={<RolesPage />} />
+
+                {/* Platform Admin */}
                 <Route path="/platform-admin" element={<PlatformDashboardPage />} />
                 <Route path="/platform-admin/institutions" element={<InstitutionsPage />} />
                 <Route path="/platform-admin/institutions/new" element={<InstitutionFormPage />} />
                 <Route path="/platform-admin/institutions/:id/edit" element={<InstitutionFormPage />} />
+
+                {/* Admission */}
                 <Route path="/admission" element={<AdmissionDashboard />} />
                 <Route path="/admission/enquiries" element={<EnquiriesPage />} />
                 <Route path="/admission/enquiries/new" element={<EnquiryFormPage />} />

@@ -14,6 +14,8 @@ marksRouter.get('/schedule/:scheduleId', (req: AuthRequest, res: Response) => {
   const { scheduleId } = req.params;
   const db = getDatabase();
 
+  const institutionFilter = req.institution_id ? `AND es.institution_id = '${req.institution_id}'` : '';
+
   // TENANT ISOLATION: Filter by institution_id
   const schedule = db.prepare(`
     SELECT es.*, e.name as exam_name, c.name as class_name, sec.name as section_name, sub.name as subject_name
@@ -22,13 +24,15 @@ marksRouter.get('/schedule/:scheduleId', (req: AuthRequest, res: Response) => {
     LEFT JOIN classes c ON es.class_id = c.id
     LEFT JOIN sections sec ON es.section_id = sec.id
     LEFT JOIN subjects sub ON es.subject_id = sub.id
-    WHERE es.id = ? AND es.institution_id = ?
-  `).get(scheduleId, req.institution_id) as any;
+    WHERE es.id = ? ${institutionFilter}
+  `).get(scheduleId) as any;
 
   if (!schedule) {
     res.status(404).json({ error: 'Exam schedule not found' });
     return;
   }
+
+  const studentInstitutionFilter = req.institution_id ? `s.institution_id = '${req.institution_id}'` : '1=1';
 
   // TENANT ISOLATION: Filter students by institution_id
   const students = db.prepare(`
@@ -36,9 +40,9 @@ marksRouter.get('/schedule/:scheduleId', (req: AuthRequest, res: Response) => {
            m.id as mark_id, m.marks_obtained, m.is_absent, m.remarks
     FROM students s
     LEFT JOIN marks m ON m.student_id = s.id AND m.exam_schedule_id = ?
-    WHERE s.institution_id = ? AND s.class_id = ? AND (? IS NULL OR s.section_id = ?) AND s.status = 'active'
+    WHERE ${studentInstitutionFilter} AND s.class_id = ? AND (? IS NULL OR s.section_id = ?) AND s.status = 'active'
     ORDER BY s.first_name, s.last_name
-  `).all(scheduleId, req.institution_id, schedule.class_id, schedule.section_id, schedule.section_id);
+  `).all(scheduleId, schedule.class_id, schedule.section_id, schedule.section_id);
 
   res.json({ schedule, students });
 });
@@ -80,15 +84,17 @@ marksRouter.get('/student/:studentId/exam/:examId', (req: AuthRequest, res: Resp
   const { studentId, examId } = req.params;
   const db = getDatabase();
 
+  const institutionFilter = req.institution_id ? `AND es.institution_id = '${req.institution_id}'` : '';
+
   // TENANT ISOLATION: Filter by institution_id
   const marks = db.prepare(`
     SELECT m.*, es.max_marks, es.pass_marks, sub.name as subject_name, sub.code as subject_code
     FROM marks m
     JOIN exam_schedules es ON m.exam_schedule_id = es.id
     JOIN subjects sub ON es.subject_id = sub.id
-    WHERE m.student_id = ? AND es.exam_id = ? AND es.institution_id = ?
+    WHERE m.student_id = ? AND es.exam_id = ? ${institutionFilter}
     ORDER BY sub.name
-  `).all(studentId, examId, req.institution_id);
+  `).all(studentId, examId);
 
   res.json(marks);
 });

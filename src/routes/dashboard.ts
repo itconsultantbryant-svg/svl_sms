@@ -9,10 +9,17 @@ export const dashboardRouter = Router();
 dashboardRouter.use(injectTenant);
 dashboardRouter.use(requireTenant);
 
+function getInstitutionFilter(req: AuthRequest, alias?: string): string {
+  const prefix = alias ? `${alias}.` : '';
+  if (req.institution_id) {
+    return `${prefix}institution_id = '${req.institution_id}'`;
+  }
+  return '1=1';
+}
+
 dashboardRouter.get('/stats', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  // TENANT ISOLATION: Filter by institution_id
-  const institutionFilter = `institution_id = '${req.institution_id}'`;
+  const institutionFilter = getInstitutionFilter(req);
   const branchFilter = req.user?.branch_id ? `AND branch_id = '${req.user.branch_id}'` : '';
 
   const totalStudents = db.prepare(`SELECT COUNT(*) as count FROM students WHERE ${institutionFilter} AND status = 'active' ${branchFilter}`).get() as any;
@@ -34,8 +41,7 @@ dashboardRouter.get('/stats', (req: AuthRequest, res: Response) => {
 
 dashboardRouter.get('/gender-stats', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  // TENANT ISOLATION: Filter by institution_id
-  const institutionFilter = `institution_id = '${req.institution_id}'`;
+  const institutionFilter = getInstitutionFilter(req);
   const branchFilter = req.user?.branch_id ? `AND branch_id = '${req.user.branch_id}'` : '';
 
   const stats = db.prepare(`
@@ -49,8 +55,7 @@ dashboardRouter.get('/gender-stats', (req: AuthRequest, res: Response) => {
 
 dashboardRouter.get('/class-population', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  // TENANT ISOLATION: Filter by institution_id
-  const institutionFilter = `c.institution_id = '${req.institution_id}'`;
+  const institutionFilter = getInstitutionFilter(req, 'c');
   const branchFilter = req.user?.branch_id ? `AND s.branch_id = '${req.user.branch_id}'` : '';
 
   const stats = db.prepare(`
@@ -67,8 +72,7 @@ dashboardRouter.get('/class-population', (req: AuthRequest, res: Response) => {
 
 dashboardRouter.get('/recent-admissions', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  // TENANT ISOLATION: Filter by institution_id
-  const institutionFilter = `s.institution_id = '${req.institution_id}'`;
+  const institutionFilter = getInstitutionFilter(req, 's');
   const branchFilter = req.user?.branch_id ? `AND s.branch_id = '${req.user.branch_id}'` : '';
 
   const students = db.prepare(`
@@ -83,4 +87,107 @@ dashboardRouter.get('/recent-admissions', (req: AuthRequest, res: Response) => {
   `).all();
 
   res.json(students);
+});
+
+dashboardRouter.get('/fee-summary', (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  const institutionFilter = getInstitutionFilter(req);
+
+  try {
+    const monthly: any[] = [];
+    for (let i = 0; i < 12; i++) {
+      const month = String(i + 1).padStart(2, '0');
+      const year = new Date().getFullYear();
+      const startDate = `${year}-${month}-01`;
+      const endDate = i < 11 ? `${year}-${String(i + 2).padStart(2, '0')}-01` : `${year + 1}-01-01`;
+
+      let total = 0, collected = 0;
+      try {
+        const totalRow = db.prepare(`
+          SELECT COALESCE(SUM(amount), 0) as total FROM fee_invoices
+          WHERE ${institutionFilter} AND due_date >= ? AND due_date < ?
+        `).get(startDate, endDate) as any;
+        total = totalRow?.total || 0;
+
+        const collectedRow = db.prepare(`
+          SELECT COALESCE(SUM(amount_paid), 0) as collected FROM fee_payments
+          WHERE ${institutionFilter} AND payment_date >= ? AND payment_date < ?
+        `).get(startDate, endDate) as any;
+        collected = collectedRow?.collected || 0;
+      } catch (e) {}
+
+      monthly.push({ total, collected, remaining: total - collected });
+    }
+
+    res.json({ monthly });
+  } catch (error) {
+    res.json({ monthly: Array(12).fill({ total: 0, collected: 0, remaining: 0 }) });
+  }
+});
+
+dashboardRouter.get('/finance-summary', (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  const institutionFilter = getInstitutionFilter(req);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const startDate = `${year}-${month}-01`;
+  const endDate = now.getMonth() < 11 ? `${year}-${String(now.getMonth() + 2).padStart(2, '0')}-01` : `${year + 1}-01-01`;
+
+  let income = 0, expense = 0;
+  try {
+    const incomeRow = db.prepare(`
+      SELECT COALESCE(SUM(amount_paid), 0) as total FROM fee_payments
+      WHERE ${institutionFilter} AND payment_date >= ? AND payment_date < ?
+    `).get(startDate, endDate) as any;
+    income = incomeRow?.total || 0;
+  } catch (e) {}
+
+  try {
+    const expenseRow = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total FROM account_transactions
+      WHERE ${institutionFilter} AND type = 'expense' AND transaction_date >= ? AND transaction_date < ?
+    `).get(startDate, endDate) as any;
+    expense = expenseRow?.total || 0;
+  } catch (e) {}
+
+  res.json({ income, expense });
+});
+
+dashboardRouter.get('/attendance-weekly', (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  const institutionFilter = getInstitutionFilter(req);
+
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const days: any[] = [];
+
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+
+  for (let i = 0; i < 5; i++) {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + i);
+    const dateStr = date.toISOString().split('T')[0];
+
+    let present = 0, absent = 0;
+    try {
+      const presentRow = db.prepare(`
+        SELECT COUNT(*) as count FROM attendance
+        WHERE ${institutionFilter} AND date = ? AND status = 'present'
+      `).get(dateStr) as any;
+      present = presentRow?.count || 0;
+
+      const absentRow = db.prepare(`
+        SELECT COUNT(*) as count FROM attendance
+        WHERE ${institutionFilter} AND date = ? AND status = 'absent'
+      `).get(dateStr) as any;
+      absent = absentRow?.count || 0;
+    } catch (e) {}
+
+    days.push({ name: dayNames[i], day: dayNames[i], present, absent });
+  }
+
+  res.json({ days });
 });

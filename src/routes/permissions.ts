@@ -6,10 +6,8 @@ import { generateId, paginate } from '../utils/helpers';
 
 export const permissionsRouter = Router();
 
-// Apply tenant middleware
+// Apply tenant middleware (my-permissions is open to all authenticated users)
 permissionsRouter.use(injectTenant);
-permissionsRouter.use(requireTenant);
-permissionsRouter.use(institutionAdminOrHigher);
 
 // ============================================
 // SYSTEM PERMISSIONS (Read-only reference)
@@ -144,6 +142,11 @@ const ROLE_TEMPLATES = {
 // ============================================
 // LIST ALL SYSTEM PERMISSIONS
 // ============================================
+
+// Apply stricter middleware to admin-only routes below
+permissionsRouter.use('/system-permissions', requireTenant, institutionAdminOrHigher);
+permissionsRouter.use('/roles', requireTenant, institutionAdminOrHigher);
+permissionsRouter.use('/role-templates', requireTenant, institutionAdminOrHigher);
 
 permissionsRouter.get('/system-permissions', (req: AuthRequest, res: Response) => {
   // Group by module

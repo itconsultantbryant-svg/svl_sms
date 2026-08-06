@@ -77,9 +77,13 @@ export function authorize(...roles: string[]) {
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
-    if (roles.length > 0 && !roles.includes(req.user.role_code || '')) {
-      res.status(403).json({ error: 'Insufficient permissions' });
-      return;
+    if (roles.length > 0) {
+      const userRoleCode = req.user.role_code || '';
+      const userType = req.user.user_type || '';
+      if (!roles.includes(userRoleCode) && !roles.includes(userType)) {
+        res.status(403).json({ error: 'Insufficient permissions' });
+        return;
+      }
     }
     next();
   };

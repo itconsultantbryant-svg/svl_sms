@@ -15,8 +15,9 @@ attendanceRouter.get('/sessions', (req: AuthRequest, res: Response) => {
   const { class_id, section_id, date, term_id } = req.query as any;
 
   // TENANT ISOLATION: Always filter by institution_id
-  let where = 'WHERE a.institution_id = ?';
-  const params: any[] = [req.institution_id];
+  const institutionFilter = req.institution_id ? `a.institution_id = '${req.institution_id}'` : '1=1';
+  let where = `WHERE ${institutionFilter}`;
+  const params: any[] = [];
 
   if (class_id) { where += ' AND a.class_id = ?'; params.push(class_id); }
   if (section_id) { where += ' AND a.section_id = ?'; params.push(section_id); }
@@ -48,6 +49,7 @@ attendanceRouter.get('/sessions/:id', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
 
   // TENANT ISOLATION: Filter by institution_id
+  const institutionFilter = req.institution_id ? `AND a.institution_id = '${req.institution_id}'` : '';
   const session = db.prepare(`
     SELECT a.*, c.name as class_name, sec.name as section_name,
            sub.name as subject_name, e.first_name || ' ' || e.last_name as teacher_name
@@ -56,8 +58,8 @@ attendanceRouter.get('/sessions/:id', (req: AuthRequest, res: Response) => {
     LEFT JOIN sections sec ON a.section_id = sec.id
     LEFT JOIN subjects sub ON a.subject_id = sub.id
     LEFT JOIN employees e ON a.teacher_id = e.id
-    WHERE a.id = ? AND a.institution_id = ?
-  `).get(id, req.institution_id);
+    WHERE a.id = ? ${institutionFilter}
+  `).get(id);
 
   if (!session) {
     res.status(404).json({ error: 'Attendance session not found' });
@@ -65,13 +67,14 @@ attendanceRouter.get('/sessions/:id', (req: AuthRequest, res: Response) => {
   }
 
   // TENANT ISOLATION: Filter related students
+  const studentInstitutionFilter = req.institution_id ? `AND s.institution_id = '${req.institution_id}'` : '';
   const records = db.prepare(`
     SELECT sa.*, s.admission_number, s.first_name, s.last_name, s.photo
     FROM student_attendance sa
     JOIN students s ON sa.student_id = s.id
-    WHERE sa.attendance_session_id = ? AND s.institution_id = ?
+    WHERE sa.attendance_session_id = ? ${studentInstitutionFilter}
     ORDER BY s.first_name, s.last_name
-  `).all(id, req.institution_id);
+  `).all(id);
 
   res.json({ ...(session as any), records });
 });
@@ -123,7 +126,8 @@ attendanceRouter.put('/sessions/:id', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
 
   // TENANT ISOLATION: Verify session belongs to this institution
-  const session = db.prepare('SELECT id FROM attendance_sessions WHERE id = ? AND institution_id = ?').get(id, req.institution_id);
+  const institutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
+  const session = db.prepare(`SELECT id FROM attendance_sessions WHERE id = ? ${institutionFilter}`).get(id);
   if (!session) {
     res.status(404).json({ error: 'Attendance session not found' });
     return;
@@ -152,8 +156,9 @@ attendanceRouter.get('/student/:studentId', (req: AuthRequest, res: Response) =>
 
   const db = getDatabase();
   // TENANT ISOLATION: Filter by institution_id
-  let where = 'WHERE sa.student_id = ? AND a.institution_id = ?';
-  const params: any[] = [studentId, req.institution_id];
+  const institutionFilter = req.institution_id ? `AND a.institution_id = '${req.institution_id}'` : '';
+  let where = `WHERE sa.student_id = ? ${institutionFilter}`;
+  const params: any[] = [studentId];
 
   if (term_id) { where += ' AND a.term_id = ?'; params.push(term_id); }
   if (session_id) { where += ' AND a.session_id = ?'; params.push(session_id); }
@@ -189,8 +194,8 @@ attendanceRouter.get('/report', (req: AuthRequest, res: Response) => {
 
   const db = getDatabase();
   // TENANT ISOLATION: Filter by institution_id
-  let dateFilter = ' AND a.institution_id = ?';
-  const params: any[] = [class_id, req.institution_id];
+  let dateFilter = req.institution_id ? ` AND a.institution_id = '${req.institution_id}'` : '';
+  const params: any[] = [class_id];
 
   if (section_id) { dateFilter += ' AND a.section_id = ?'; params.push(section_id); }
   if (term_id) { dateFilter += ' AND a.term_id = ?'; params.push(term_id); }
@@ -209,10 +214,10 @@ attendanceRouter.get('/report', (req: AuthRequest, res: Response) => {
     FROM students s
     LEFT JOIN student_attendance sa ON sa.student_id = s.id
     LEFT JOIN attendance_sessions a ON sa.attendance_session_id = a.id AND a.class_id = ? ${dateFilter}
-    WHERE s.class_id = ? AND s.institution_id = ? AND s.status = 'active'
+    WHERE s.class_id = ? ${req.institution_id ? `AND s.institution_id = '${req.institution_id}'` : ''} AND s.status = 'active'
     GROUP BY s.id
     ORDER BY s.first_name, s.last_name
-  `).all(...params, class_id, req.institution_id);
+  `).all(...params, class_id);
 
   res.json(report);
 });

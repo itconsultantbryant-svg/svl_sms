@@ -20,9 +20,10 @@ teachersRouter.get('/', (req: AuthRequest, res: Response) => {
     search
   );
 
-  // TENANT ISOLATION: Always filter by institution_id
-  let where = 'WHERE e.institution_id = ? AND e.is_teacher = 1 AND e.is_active = 1 ' + searchClause;
-  const params: any[] = [req.institution_id, ...searchParams];
+  // TENANT ISOLATION: Always filter by institution_id (null for platform admins)
+  const institutionFilter = req.institution_id ? `e.institution_id = '${req.institution_id}'` : '1=1';
+  let where = `WHERE ${institutionFilter} AND e.is_teacher = 1 AND e.is_active = 1 ` + searchClause;
+  const params: any[] = [...searchParams];
 
   if (branch) { where += ' AND e.branch_id = ?'; params.push(branch); }
   if (department) { where += ' AND e.department_id = ?'; params.push(department); }
@@ -48,22 +49,24 @@ teachersRouter.get('/:id', (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const db = getDatabase();
 
-  // TENANT ISOLATION: Filter by institution_id
+  // TENANT ISOLATION: Filter by institution_id (null for platform admins)
+  const institutionFilter = req.institution_id ? `AND e.institution_id = '${req.institution_id}'` : '';
   const teacher = db.prepare(`
     SELECT e.*, d.name as department_name, des.name as designation_name, b.branch_name as branch_name
     FROM employees e
     LEFT JOIN departments d ON e.department_id = d.id
     LEFT JOIN designations des ON e.designation_id = des.id
     LEFT JOIN branches b ON e.branch_id = b.id
-    WHERE e.id = ? AND e.institution_id = ? AND e.is_teacher = 1
-  `).get(id, req.institution_id) as any;
+    WHERE e.id = ? ${institutionFilter} AND e.is_teacher = 1
+  `).get(id) as any;
 
   if (!teacher) {
     res.status(404).json({ error: 'Teacher not found' });
     return;
   }
 
-  // TENANT ISOLATION: Filter assignments through employee
+  // TENANT ISOLATION: Filter assignments through employee (null for platform admins)
+  const assignmentInstFilter = req.institution_id ? `AND ta.institution_id = '${req.institution_id}'` : '';
   const assignments = db.prepare(`
     SELECT ta.*, c.name as class_name, sec.name as section_name, sub.name as subject_name,
            ses.name as session_name
@@ -72,8 +75,8 @@ teachersRouter.get('/:id', (req: AuthRequest, res: Response) => {
     LEFT JOIN sections sec ON ta.section_id = sec.id
     LEFT JOIN subjects sub ON ta.subject_id = sub.id
     LEFT JOIN academic_sessions ses ON ta.session_id = ses.id
-    WHERE ta.employee_id = ? AND ta.institution_id = ?
-  `).all(id, req.institution_id);
+    WHERE ta.employee_id = ? ${assignmentInstFilter}
+  `).all(id);
 
   res.json({ ...teacher, assignments });
 });
@@ -199,8 +202,9 @@ teachersRouter.put('/:id', authorize('platform_admin', 'institution_admin', 'hr_
   } = req.body;
 
   const db = getDatabase();
-  // TENANT ISOLATION: Check teacher belongs to this institution
-  const teacher = db.prepare('SELECT id FROM employees WHERE id = ? AND institution_id = ? AND is_teacher = 1').get(id, req.institution_id);
+  // TENANT ISOLATION: Check teacher belongs to this institution (null for platform admins)
+  const instFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
+  const teacher = db.prepare(`SELECT id FROM employees WHERE id = ? ${instFilter} AND is_teacher = 1`).get(id);
   if (!teacher) {
     res.status(404).json({ error: 'Teacher not found' });
     return;
@@ -252,7 +256,8 @@ teachersRouter.post('/:id/assignments', authorize('platform_admin', 'institution
 teachersRouter.delete('/:id/assignments/:assignmentId', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   const { assignmentId } = req.params;
   const db = getDatabase();
-  // TENANT ISOLATION: Verify ownership before delete
-  db.prepare('DELETE FROM teacher_assignments WHERE id = ? AND institution_id = ?').run(assignmentId, req.institution_id);
+  // TENANT ISOLATION: Verify ownership before delete (null for platform admins)
+  const deleteInstFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
+  db.prepare(`DELETE FROM teacher_assignments WHERE id = ? ${deleteInstFilter}`).run(assignmentId);
   res.json({ message: 'Assignment removed successfully' });
 });

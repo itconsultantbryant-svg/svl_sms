@@ -14,7 +14,8 @@ academicsRouter.use(requireTenant);
 academicsRouter.get('/sessions', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
   // TENANT ISOLATION: Filter by institution_id
-  const sessions = db.prepare('SELECT * FROM academic_sessions WHERE institution_id = ? ORDER BY start_date DESC').all(req.institution_id);
+  const institutionFilter = req.institution_id ? `institution_id = '${req.institution_id}'` : '1=1';
+  const sessions = db.prepare(`SELECT * FROM academic_sessions WHERE ${institutionFilter} ORDER BY start_date DESC`).all();
   res.json(sessions);
 });
 
@@ -103,8 +104,9 @@ academicsRouter.get('/classes', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
   const { branch_id } = req.query as any;
   // TENANT ISOLATION: Filter by institution_id
-  let where = 'WHERE c.institution_id = ? AND c.is_active = 1';
-  const params: any[] = [req.institution_id];
+  const institutionFilter = req.institution_id ? `c.institution_id = '${req.institution_id}'` : '1=1';
+  let where = `WHERE ${institutionFilter} AND c.is_active = 1`;
+  const params: any[] = [];
 
   if (branch_id) { where += ' AND c.branch_id = ?'; params.push(branch_id); }
   if (req.user?.branch_id) { where += ' AND c.branch_id = ?'; params.push(req.user.branch_id); }
@@ -199,8 +201,9 @@ academicsRouter.post('/sections', authorize('platform_admin', 'institution_admin
 academicsRouter.get('/subjects', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
   const { branch_id } = req.query as any;
-  let where = 'WHERE s.institution_id = ? AND s.is_active = 1';
-  const params: any[] = [req.institution_id];
+  const institutionFilter = req.institution_id ? `s.institution_id = '${req.institution_id}'` : '1=1';
+  let where = `WHERE ${institutionFilter} AND s.is_active = 1`;
+  const params: any[] = [];
 
   if (branch_id) { where += ' AND s.branch_id = ?'; params.push(branch_id); }
 
@@ -270,14 +273,15 @@ academicsRouter.post('/class-subjects', authorize('platform_admin', 'institution
 // Departments
 academicsRouter.get('/departments', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
+  const institutionFilter = req.institution_id ? `d.institution_id = '${req.institution_id}'` : '1=1';
   const departments = db.prepare(`
     SELECT d.*, b.branch_name,
       (SELECT COUNT(*) FROM employees e WHERE e.department_id = d.id AND e.is_active = 1) as employee_count
     FROM departments d
     LEFT JOIN branches b ON d.branch_id = b.id
-    WHERE d.institution_id = ? AND d.is_active = 1
+    WHERE ${institutionFilter} AND d.is_active = 1
     ORDER BY d.name
-  `).all(req.institution_id);
+  `).all();
   res.json(departments);
 });
 
@@ -297,7 +301,8 @@ academicsRouter.post('/departments', authorize('platform_admin', 'institution_ad
 // Designations
 academicsRouter.get('/designations', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const designations = db.prepare('SELECT * FROM designations WHERE institution_id = ? ORDER BY name').all(req.institution_id);
+  const institutionFilter = req.institution_id ? `institution_id = '${req.institution_id}'` : '1=1';
+  const designations = db.prepare(`SELECT * FROM designations WHERE ${institutionFilter} ORDER BY name`).all();
   res.json(designations);
 });
 

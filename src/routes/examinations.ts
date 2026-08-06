@@ -13,8 +13,9 @@ examinationsRouter.use(requireTenant);
 // Exam Types
 examinationsRouter.get('/types', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  // TENANT ISOLATION: Filter by institution_id
-  const types = db.prepare('SELECT * FROM exam_types WHERE institution_id = ? AND is_active = 1 ORDER BY name').all(req.institution_id);
+  // TENANT ISOLATION: Filter by institution_id (null for platform admins = see all)
+  const institutionFilter = req.institution_id ? `institution_id = '${req.institution_id}'` : '1=1';
+  const types = db.prepare(`SELECT * FROM exam_types WHERE ${institutionFilter} AND is_active = 1 ORDER BY name`).all();
   res.json(types);
 });
 
@@ -34,16 +35,18 @@ examinationsRouter.post('/types', authorize('platform_admin', 'institution_admin
 // Grade Scales
 examinationsRouter.get('/grade-scales', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  // TENANT ISOLATION: Filter by institution_id
-  const scales = db.prepare('SELECT * FROM grade_scales WHERE institution_id = ? ORDER BY name').all(req.institution_id);
+  // TENANT ISOLATION: Filter by institution_id (null for platform admins = see all)
+  const institutionFilter = req.institution_id ? `institution_id = '${req.institution_id}'` : '1=1';
+  const scales = db.prepare(`SELECT * FROM grade_scales WHERE ${institutionFilter} ORDER BY name`).all();
   res.json(scales);
 });
 
 examinationsRouter.get('/grade-scales/:id', (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const db = getDatabase();
-  // TENANT ISOLATION: Filter by institution_id
-  const scale = db.prepare('SELECT * FROM grade_scales WHERE id = ? AND institution_id = ?').get(id, req.institution_id);
+  // TENANT ISOLATION: Filter by institution_id (null for platform admins = see all)
+  const institutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
+  const scale = db.prepare(`SELECT * FROM grade_scales WHERE id = ? ${institutionFilter}`).get(id);
   if (!scale) { res.status(404).json({ error: 'Grade scale not found' }); return; }
   const entries = db.prepare('SELECT * FROM grade_scale_entries WHERE grade_scale_id = ? ORDER BY min_percentage DESC').all(id);
   res.json({ ...(scale as any), entries });
@@ -86,9 +89,10 @@ examinationsRouter.get('/exams', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
   const { session_id, term_id, status } = req.query as any;
 
-  // TENANT ISOLATION: Always filter by institution_id
-  let where = 'WHERE e.institution_id = ?';
-  const params: any[] = [req.institution_id];
+  // TENANT ISOLATION: Always filter by institution_id (null for platform admins = see all)
+  const institutionFilter = req.institution_id ? `e.institution_id = '${req.institution_id}'` : '1=1';
+  let where = `WHERE ${institutionFilter}`;
+  const params: any[] = [];
   if (session_id) { where += ' AND e.session_id = ?'; params.push(session_id); }
   if (term_id) { where += ' AND e.term_id = ?'; params.push(term_id); }
   if (status) { where += ' AND e.status = ?'; params.push(status); }
@@ -112,28 +116,30 @@ examinationsRouter.get('/exams/:id', (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const db = getDatabase();
 
-  // TENANT ISOLATION: Filter by institution_id
+  // TENANT ISOLATION: Filter by institution_id (null for platform admins = see all)
+  const institutionFilter = req.institution_id ? `AND e.institution_id = '${req.institution_id}'` : '';
   const exam = db.prepare(`
     SELECT e.*, et.name as exam_type_name, s.name as session_name, t.name as term_name
     FROM exams e
     LEFT JOIN exam_types et ON e.exam_type_id = et.id
     LEFT JOIN academic_sessions s ON e.session_id = s.id
     LEFT JOIN terms t ON e.term_id = t.id
-    WHERE e.id = ? AND e.institution_id = ?
-  `).get(id, req.institution_id);
+    WHERE e.id = ? ${institutionFilter}
+  `).get(id);
 
   if (!exam) { res.status(404).json({ error: 'Exam not found' }); return; }
 
-  // TENANT ISOLATION: Filter schedules through exam
+  // TENANT ISOLATION: Filter schedules through exam (null for platform admins = see all)
+  const schedulesInstitutionFilter = req.institution_id ? `AND es.institution_id = '${req.institution_id}'` : '';
   const schedules = db.prepare(`
     SELECT es.*, c.name as class_name, sec.name as section_name, sub.name as subject_name
     FROM exam_schedules es
     LEFT JOIN classes c ON es.class_id = c.id
     LEFT JOIN sections sec ON es.section_id = sec.id
     LEFT JOIN subjects sub ON es.subject_id = sub.id
-    WHERE es.exam_id = ? AND es.institution_id = ?
+    WHERE es.exam_id = ? ${schedulesInstitutionFilter}
     ORDER BY es.date, es.start_time
-  `).all(id, req.institution_id);
+  `).all(id);
 
   res.json({ ...(exam as any), schedules });
 });
@@ -162,8 +168,9 @@ examinationsRouter.put('/exams/:id', authorize('platform_admin', 'institution_ad
   const { name, exam_type_id, start_date, end_date, status, description } = req.body;
 
   const db = getDatabase();
-  // TENANT ISOLATION: Check exam belongs to this institution
-  const exam = db.prepare('SELECT id FROM exams WHERE id = ? AND institution_id = ?').get(id, req.institution_id);
+  // TENANT ISOLATION: Check exam belongs to this institution (null for platform admins = see all)
+  const ownershipFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
+  const exam = db.prepare(`SELECT id FROM exams WHERE id = ? ${ownershipFilter}`).get(id);
   if (!exam) {
     res.status(404).json({ error: 'Exam not found' });
     return;
@@ -213,7 +220,8 @@ examinationsRouter.post('/exams/:id/schedules', authorize('platform_admin', 'ins
 examinationsRouter.delete('/schedules/:scheduleId', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   const { scheduleId } = req.params;
   const db = getDatabase();
-  // TENANT ISOLATION: Filter by institution_id before deleting
-  db.prepare('DELETE FROM exam_schedules WHERE id = ? AND institution_id = ?').run(scheduleId, req.institution_id);
+  // TENANT ISOLATION: Filter by institution_id before deleting (null for platform admins = see all)
+  const deleteInstitutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
+  db.prepare(`DELETE FROM exam_schedules WHERE id = ? ${deleteInstitutionFilter}`).run(scheduleId);
   res.json({ message: 'Schedule removed successfully' });
 });

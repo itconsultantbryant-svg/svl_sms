@@ -41,13 +41,10 @@ const ALL_NAVIGATION: MenuItem[] = [
   },
   {
     name: 'Inventory',
+    href: '/inventory',
     icon: Package,
     permission: 'dashboard.view',
-    userTypes: ['platform_admin', 'institution_admin', 'staff'],
-    children: [
-      { name: 'Item List', href: '/inventory', permission: 'dashboard.view' },
-      { name: 'Issue Items', href: '/inventory/issue', permission: 'dashboard.view' },
-    ]
+    userTypes: ['platform_admin', 'institution_admin', 'staff']
   },
   {
     name: 'Branch',
@@ -58,13 +55,10 @@ const ALL_NAVIGATION: MenuItem[] = [
   },
   {
     name: 'Reception',
+    href: '/reception',
     icon: Users,
     permission: 'dashboard.view',
-    userTypes: ['platform_admin', 'institution_admin', 'staff'],
-    children: [
-      { name: 'Enquiry', href: '/reception/enquiry', permission: 'dashboard.view' },
-      { name: 'Visitors', href: '/reception/visitors', permission: 'dashboard.view' },
-    ]
+    userTypes: ['platform_admin', 'institution_admin', 'staff']
   },
   {
     name: 'Admission',
@@ -73,18 +67,15 @@ const ALL_NAVIGATION: MenuItem[] = [
     userTypes: ['platform_admin', 'institution_admin', 'staff'],
     children: [
       { name: 'New Admission', href: '/students/new', permission: 'students.create' },
-      { name: 'Bulk Admission', href: '/students/bulk', permission: 'students.create' },
+      { name: 'All Applications', href: '/admission/applications', permission: 'students.view' },
     ]
   },
   {
     name: 'Student Details',
+    href: '/students',
     icon: GraduationCap,
     permission: 'students.view',
-    userTypes: ['platform_admin', 'institution_admin', 'teacher', 'staff'],
-    children: [
-      { name: 'All Students', href: '/students', permission: 'students.view' },
-      { name: 'Promote Students', href: '/students/promote', permission: 'students.view' },
-    ]
+    userTypes: ['platform_admin', 'institution_admin', 'teacher', 'staff']
   },
   {
     name: 'Parents',
@@ -100,7 +91,7 @@ const ALL_NAVIGATION: MenuItem[] = [
     userTypes: ['platform_admin', 'institution_admin'],
     children: [
       { name: 'Teachers', href: '/teachers', permission: 'teachers.view' },
-      { name: 'Staff', href: '/payroll', permission: 'users.view' },
+      { name: 'Payroll', href: '/payroll', permission: 'users.view' },
     ]
   },
   {
@@ -130,15 +121,11 @@ const ALL_NAVIGATION: MenuItem[] = [
     userTypes: ['platform_admin', 'institution_admin', 'teacher']
   },
   {
-    name: 'Grades & Results',
-    icon: Award,
-    permission: 'grades.view',
-    userTypes: ['platform_admin', 'institution_admin', 'teacher'],
-    children: [
-      { name: 'Mark Entry', href: '/marks', permission: 'marks.enter' },
-      { name: 'Grade Approval', href: '/grades/approval', permission: 'grades.approve' },
-      { name: 'Results', href: '/results', permission: 'results.view' },
-    ]
+    name: 'Assignments',
+    href: '/assignments',
+    icon: CheckSquare,
+    permission: 'assignments.view',
+    userTypes: ['platform_admin', 'institution_admin', 'teacher']
   },
   {
     name: 'Finance',
@@ -165,15 +152,6 @@ const ALL_NAVIGATION: MenuItem[] = [
     icon: Bus,
     permission: 'transport.view',
     userTypes: ['platform_admin', 'institution_admin', 'staff']
-  },
-  {
-    name: 'Human Resource',
-    icon: Briefcase,
-    permission: 'users.view',
-    userTypes: ['platform_admin', 'institution_admin'],
-    children: [
-      { name: 'HR & Payroll', href: '/payroll', permission: 'users.view' },
-    ]
   },
   {
     name: 'Communication',
@@ -248,14 +226,6 @@ const ALL_NAVIGATION: MenuItem[] = [
     href: '/parent/children',
     icon: Users,
     userTypes: ['parent']
-  },
-  // Assignments for admin/teachers
-  {
-    name: 'Assignments',
-    href: '/assignments',
-    icon: CheckSquare,
-    permission: 'assignments.view',
-    userTypes: ['platform_admin', 'institution_admin', 'teacher']
   },
 ];
 

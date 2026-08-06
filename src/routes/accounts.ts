@@ -13,7 +13,8 @@ accountsRouter.use(requireTenant);
 // Income Categories
 accountsRouter.get('/income-categories', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const categories = db.prepare('SELECT * FROM income_categories WHERE institution_id = ? AND is_active = 1 ORDER BY name').all(req.institution_id);
+  const institutionFilter = req.institution_id ? `institution_id = '${req.institution_id}'` : '1=1';
+  const categories = db.prepare(`SELECT * FROM income_categories WHERE ${institutionFilter} AND is_active = 1 ORDER BY name`).all();
   res.json(categories);
 });
 
@@ -29,7 +30,8 @@ accountsRouter.post('/income-categories', authorize('platform_admin', 'instituti
 // Expense Categories
 accountsRouter.get('/expense-categories', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const categories = db.prepare('SELECT * FROM expense_categories WHERE institution_id = ? AND is_active = 1 ORDER BY name').all(req.institution_id);
+  const institutionFilter = req.institution_id ? `institution_id = '${req.institution_id}'` : '1=1';
+  const categories = db.prepare(`SELECT * FROM expense_categories WHERE ${institutionFilter} AND is_active = 1 ORDER BY name`).all();
   res.json(categories);
 });
 

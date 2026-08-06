@@ -23,10 +23,11 @@ gradeApprovalRouter.post('/submit', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
 
   // Get teacher's employee ID
+  const institutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
   const teacher = db.prepare(`
     SELECT id FROM employees
-    WHERE user_id = ? AND institution_id = ? AND is_teacher = 1
-  `).get(req.user.id, req.institution_id) as any;
+    WHERE user_id = ? ${institutionFilter} AND is_teacher = 1
+  `).get(req.user.id) as any;
 
   if (!teacher) {
     res.status(404).json({ error: 'Teacher record not found' });
@@ -46,13 +47,14 @@ gradeApprovalRouter.post('/submit', (req: AuthRequest, res: Response) => {
   }
 
   // Verify teacher is assigned to this class/subject
+  const assignmentInstitutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
   const assignment = db.prepare(`
     SELECT id FROM teacher_assignments
-    WHERE employee_id = ? AND institution_id = ? AND class_id = ? AND subject_id = ? AND session_id = ?
+    WHERE employee_id = ? ${assignmentInstitutionFilter} AND class_id = ? AND subject_id = ? AND session_id = ?
     ${section_id ? 'AND section_id = ?' : ''}
   `).get(
-    section_id ? [teacher.id, req.institution_id, class_id, subject_id, session_id, section_id] :
-    [teacher.id, req.institution_id, class_id, subject_id, session_id]
+    section_id ? [teacher.id, class_id, subject_id, session_id, section_id] :
+    [teacher.id, class_id, subject_id, session_id]
   );
 
   if (!assignment) {
@@ -91,10 +93,11 @@ gradeApprovalRouter.post('/submit', (req: AuthRequest, res: Response) => {
     );
 
     // Notify admins
+    const adminsInstitutionFilter = req.institution_id ? `institution_id = '${req.institution_id}' AND` : '';
     const admins = db.prepare(`
       SELECT id FROM users
-      WHERE institution_id = ? AND user_type IN ('platform_admin', 'institution_admin') AND is_active = 1
-    `).all(req.institution_id);
+      WHERE ${adminsInstitutionFilter} user_type IN ('platform_admin', 'institution_admin') AND is_active = 1
+    `).all();
 
     const notifStmt = db.prepare(`
       INSERT INTO notifications (
@@ -138,18 +141,20 @@ gradeApprovalRouter.get('/my-submissions', (req: AuthRequest, res: Response) => 
   const { page = '1', limit = '20', status } = req.query as any;
   const { limit: lim, offset } = paginate(parseInt(page), parseInt(limit));
 
+  const mySubInstitutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
   const teacher = db.prepare(`
     SELECT id FROM employees
-    WHERE user_id = ? AND institution_id = ? AND is_teacher = 1
-  `).get(req.user.id, req.institution_id) as any;
+    WHERE user_id = ? ${mySubInstitutionFilter} AND is_teacher = 1
+  `).get(req.user.id) as any;
 
   if (!teacher) {
     res.status(404).json({ error: 'Teacher record not found' });
     return;
   }
 
-  let where = 'WHERE gs.institution_id = ? AND gs.teacher_id = ?';
-  const params: any[] = [req.institution_id, teacher.id];
+  const mySubGsInstitutionFilter = req.institution_id ? `gs.institution_id = '${req.institution_id}' AND` : '';
+  let where = `WHERE ${mySubGsInstitutionFilter} gs.teacher_id = ?`;
+  const params: any[] = [teacher.id];
 
   if (status) {
     where += ' AND gs.approval_status = ?';
@@ -191,8 +196,9 @@ gradeApprovalRouter.get('/pending', institutionAdminOrHigher, (req: AuthRequest,
   const { page = '1', limit = '20' } = req.query as any;
   const { limit: lim, offset } = paginate(parseInt(page), parseInt(limit));
 
-  const where = 'WHERE gs.institution_id = ? AND gs.approval_status = ?';
-  const params: any[] = [req.institution_id, 'pending'];
+  const pendingInstitutionFilter = req.institution_id ? `gs.institution_id = '${req.institution_id}' AND` : '';
+  const where = `WHERE ${pendingInstitutionFilter} gs.approval_status = ?`;
+  const params: any[] = ['pending'];
 
   const total = db.prepare(`SELECT COUNT(*) as count FROM grade_submissions gs ${where}`).get(...params) as any;
 
@@ -228,11 +234,12 @@ gradeApprovalRouter.post('/:id/approve', institutionAdminOrHigher, (req: AuthReq
   const { id } = req.params;
   const db = getDatabase();
 
+  const approveInstitutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
   const submission = db.prepare(`
     SELECT id, exam_id, class_id, section_id, subject_id, approval_status
     FROM grade_submissions
-    WHERE id = ? AND institution_id = ?
-  `).get(id, req.institution_id) as any;
+    WHERE id = ? ${approveInstitutionFilter}
+  `).get(id) as any;
 
   if (!submission) {
     res.status(404).json({ error: 'Grade submission not found' });
@@ -257,29 +264,31 @@ gradeApprovalRouter.post('/:id/approve', institutionAdminOrHigher, (req: AuthReq
       `).run(req.user!.id, id);
 
       // 2. Update all related results to published
+      const resultsInstitutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
       db.prepare(`
         UPDATE results SET
           is_published = 1,
           updated_at = datetime('now')
-        WHERE exam_id = ? AND class_id = ? AND institution_id = ?
+        WHERE exam_id = ? AND class_id = ? ${resultsInstitutionFilter}
         ${submission.section_id ? 'AND section_id = ?' : ''}
       `).run(
         submission.section_id ?
-        [submission.exam_id, submission.class_id, req.institution_id, submission.section_id] :
-        [submission.exam_id, submission.class_id, req.institution_id]
+        [submission.exam_id, submission.class_id, submission.section_id] :
+        [submission.exam_id, submission.class_id]
       );
 
       // 3. Notify students
+      const studentsInstitutionFilter = req.institution_id ? `AND r.institution_id = '${req.institution_id}'` : '';
       const students = db.prepare(`
         SELECT DISTINCT s.user_id
         FROM students s
         INNER JOIN results r ON s.id = r.student_id
-        WHERE r.exam_id = ? AND r.class_id = ? AND r.institution_id = ? AND s.user_id IS NOT NULL
+        WHERE r.exam_id = ? AND r.class_id = ? ${studentsInstitutionFilter} AND s.user_id IS NOT NULL
         ${submission.section_id ? 'AND r.section_id = ?' : ''}
       `).all(
         submission.section_id ?
-        [submission.exam_id, submission.class_id, req.institution_id, submission.section_id] :
-        [submission.exam_id, submission.class_id, req.institution_id]
+        [submission.exam_id, submission.class_id, submission.section_id] :
+        [submission.exam_id, submission.class_id]
       );
 
       const notifStmt = db.prepare(`
@@ -322,10 +331,11 @@ gradeApprovalRouter.post('/:id/reject', institutionAdminOrHigher, (req: AuthRequ
     return;
   }
 
+  const rejectInstitutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
   const submission = db.prepare(`
     SELECT id, teacher_id, approval_status FROM grade_submissions
-    WHERE id = ? AND institution_id = ?
-  `).get(id, req.institution_id) as any;
+    WHERE id = ? ${rejectInstitutionFilter}
+  `).get(id) as any;
 
   if (!submission) {
     res.status(404).json({ error: 'Grade submission not found' });
@@ -384,8 +394,9 @@ gradeApprovalRouter.get('/all', institutionAdminOrHigher, (req: AuthRequest, res
   const { page = '1', limit = '20', status, exam_id, class_id } = req.query as any;
   const { limit: lim, offset } = paginate(parseInt(page), parseInt(limit));
 
-  let where = 'WHERE gs.institution_id = ?';
-  const params: any[] = [req.institution_id];
+  const allInstitutionFilter = req.institution_id ? `gs.institution_id = '${req.institution_id}'` : '1=1';
+  let where = `WHERE ${allInstitutionFilter}`;
+  const params: any[] = [];
 
   if (status) { where += ' AND gs.approval_status = ?'; params.push(status); }
   if (exam_id) { where += ' AND gs.exam_id = ?'; params.push(exam_id); }
