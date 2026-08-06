@@ -30,6 +30,10 @@ export interface AuthRequest extends Request {
   query?: any;
   params?: any;
   body?: any;
+  headers?: any;
+  path?: string;
+  method?: string;
+  ip?: string;
 }
 
 export function authenticate(req: AuthRequest, res: Response, next: NextFunction): void {
