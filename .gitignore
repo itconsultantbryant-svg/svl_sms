@@ -62,5 +62,17 @@ backend/
 tools/licenses/*.json
 !tools/licenses/.gitkeep
 
+# Electron build artifacts
+dist/electron/
+out/
+*.dmg
+*.snap
+*.AppImage
+*.exe
+*.msi
+
+# Electron cache
+.electron-cache/
+
 # Misc
 .cache/

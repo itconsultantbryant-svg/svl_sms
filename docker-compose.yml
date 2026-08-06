@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+    container_name: svl-sms-backend
+    ports:
+      - "10000:10000"
+    environment:
+      NODE_ENV: development
+      PORT: 10000
+      DB_PATH: ./data/svl-sms.db
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-key-change-in-production}
+      LICENSE_PRIVATE_KEY: ${LICENSE_PRIVATE_KEY:-dev-key-change-in-production}
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://frontend:3000
+      FRONTEND_URL: http://frontend:3000
+    volumes:
+      - ./src:/app/src
+      - ./dist:/app/dist
+      - ./data:/app/data
+      - /app/node_modules
+    networks:
+      - svl-sms-network
+    command: npm run dev
+    depends_on:
+      - database
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:10000/api/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: svl-sms-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://backend:10000/api
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - /app/node_modules
+    networks:
+      - svl-sms-network
+    depends_on:
+      - backend
+    command: npm run dev
+
+  database:
+    image: busybox:latest
+    container_name: svl-sms-db
+    volumes:
+      - ./data:/data
+    command: tail -f /dev/null
+    networks:
+      - svl-sms-network
+
+networks:
+  svl-sms-network:
+    driver: bridge
+
+volumes:
+  data:
+    driver: local
