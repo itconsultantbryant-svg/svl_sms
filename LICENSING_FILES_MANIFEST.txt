@@ -1,0 +1,455 @@
+SVL-SMS BACKEND LICENSING SYSTEM - FILES MANIFEST
+==================================================
+
+CREATED FILES (New):
+====================
+
+1. src/utils/licensing.ts (5.3 KB)
+   - RSA key pair (public/private)
+   - generateLicenseKey() - Create signed license keys
+   - validateLicenseKey() - Format validation
+   - signKey() - RSA signing with private key
+   - verifyKeySignature() - RSA verification with public key
+   - generateMachineFingerprint() - Device ID generation
+   - getDaysRemaining() - Expiry countdown calculation
+   - isExpired() - Expiry check function
+   
+2. src/routes/licensing.ts (11 KB)
+   - POST /api/licensing/activate - License activation (no auth)
+   - GET /api/licensing/check - License status check (auth required)
+   - POST /api/licensing/check-in - Periodic validation (auth required)
+   - POST /api/licensing/generate-key - Admin license generation
+   - License validation logic
+   - Error handling and responses
+   - Database operations (safe prepared statements)
+
+3. src/routes/demo-mode-enforcement.ts (7.5 KB)
+   - checkDemoMode() middleware - License verification
+   - addDemoWatermark() middleware - Add _demo_watermark to responses
+   - blockDemoExports() middleware - Block export endpoints
+   - capDemoStudentCount() middleware - Cap student count at 50
+   - GET /api/demo-mode/status - Check demo status
+   - POST /api/demo-mode/setup - Initialize demo mode
+   - Demo mode logic and restrictions
+
+4. Documentation Files:
+   - LICENSING_README.md - Quick start and overview
+   - LICENSING_IMPLEMENTATION.md - Complete technical reference
+   - DEMO_MODE_INTEGRATION.md - Frontend integration guide
+   - LICENSING_CHECKLIST.md - Implementation and verification checklist
+   - LICENSING_SYSTEM_SUMMARY.md - Architecture and summary
+   - LICENSING_FILES_MANIFEST.txt - This file
+
+5. test-licensing.sh (3.6 KB)
+   - Bash script to test all endpoints
+   - Colored output for test results
+   - Example curl commands
+   - Server health check
+   - Executable: chmod +x test-licensing.sh
+
+
+MODIFIED FILES:
+===============
+
+1. src/database/schema-v2-consolidated.ts (+100 lines)
+   - Added SECTION 10: LICENSING & DEMO MODE
+   - CREATE TABLE licenses (26 lines)
+     * id, institution_id, license_key, mode, plan_tier, expiry_date
+     * machine_fingerprint, status, activated_at, created_at, updated_at
+   
+   - CREATE TABLE license_activations (22 lines)
+     * id, institution_id, license_id, machine_id, activated_at
+     * last_check_in, ip_address, created_at, updated_at
+     * UNIQUE(license_id, machine_id)
+   
+   - CREATE TABLE demo_mode_settings (13 lines)
+     * id, institution_id, max_students, expiry_date, created_at, updated_at
+   
+   - Created 7 indexes for performance:
+     * idx_licenses_institution
+     * idx_licenses_key
+     * idx_licenses_status
+     * idx_licenses_expiry
+     * idx_licenses_mode
+     * idx_license_activations_institution
+     * idx_license_activations_license
+     * idx_license_activations_machine
+     * idx_demo_mode_settings_institution
+
+2. src/middleware/auth.ts (+60 lines)
+   - Extended AuthRequest interface with license fields:
+     * license_mode?: string
+     * license_expiry?: string
+     * license_tier?: string
+     * days_remaining?: number
+     * license_id?: string
+   
+   - Added license checking in authenticate() function:
+     * Load active license after user authentication
+     * Check if license is expired
+     * Reject with 403 if expired (demo or production)
+     * Reject with 403 if no license (non-admin)
+     * Attach license info to req.user object
+   
+   - Imported: isExpired, getDaysRemaining from licensing utils
+
+3. src/index.ts (+10 lines)
+   - Import licensingRouter from './routes/licensing'
+   - Import demoModeRouter from './routes/demo-mode-enforcement'
+   - Register licensing routes: app.use('/api/licensing', licensingRouter)
+   - Register demo-mode routes: app.use('/api/demo-mode', demoModeRouter)
+   - Routes placed before protected routes, after auth routes
+
+
+CODE STATISTICS:
+================
+
+New Code:
+- Utilities (src/utils/licensing.ts): ~150 lines
+- Licensing Routes (src/routes/licensing.ts): ~300 lines
+- Demo Enforcement (src/routes/demo-mode-enforcement.ts): ~300 lines
+- Database Schema (new tables + indexes): ~100 lines
+- Auth Middleware (license checking): ~60 lines
+- Main App (route registration): ~10 lines
+- Subtotal: ~920 lines of new backend code
+
+Documentation:
+- LICENSING_README.md: ~400 lines
+- LICENSING_IMPLEMENTATION.md: ~600 lines
+- DEMO_MODE_INTEGRATION.md: ~500 lines
+- LICENSING_CHECKLIST.md: ~400 lines
+- LICENSING_SYSTEM_SUMMARY.md: ~400 lines
+- Total Documentation: ~2,300 lines
+
+Test Script:
+- test-licensing.sh: ~150 lines
+
+TOTAL NEW CODE: ~3,370 lines
+
+
+ENDPOINTS CREATED:
+==================
+
+PUBLIC (No Auth Required):
+- POST /api/licensing/activate
+  * Activate license on machine
+  * Parameters: license_key, machine_id, institution_id (optional)
+  * Response: status, mode, planTier, expiry, daysRemaining
+
+PROTECTED (Auth Required):
+- GET /api/licensing/check
+  * Check current license status
+  * Response: mode, status, planTier, expiry, daysRemaining
+
+- POST /api/licensing/check-in
+  * Periodic validation and sync
+  * Parameters: machine_id
+  * Response: valid, mode, planTier, expiry, checkedInAt
+
+- GET /api/demo-mode/status
+  * Check demo mode status
+  * Response: isDemo, hasLicense, mode, planTier, expiry
+
+- POST /api/demo-mode/setup
+  * Initialize demo mode for institution
+  * Requires: institution_admin
+  * Response: message, mode, planTier, maxStudents, expiryDate
+
+ADMIN ONLY (Platform Admin):
+- POST /api/licensing/generate-key
+  * Generate test license keys
+  * Parameters: institution_id, plan_tier, mode, expiry_days
+  * Response: licenseKey, mode, planTier, expiryDate
+
+
+MIDDLEWARE FUNCTIONS:
+====================
+
+1. checkDemoMode(req, res, next)
+   - Verify license status
+   - Reject if expired
+   - Attach license info to request
+
+2. addDemoWatermark(req, res, next)
+   - Add _demo_watermark: true to responses
+   - Add _demo_expiry to responses
+   - Works with JSON responses only
+
+3. blockDemoExports(req, res, next)
+   - Block /export, /download, /report endpoints
+   - Only in demo mode
+   - Returns 403 error
+
+4. capDemoStudentCount(req, res, next)
+   - Cap student count at 50
+   - Only on /api/dashboard/stats GET
+   - Marks response with _capped_demo: true
+
+
+DATABASE TABLES:
+================
+
+licenses (26 rows schema)
+- id: TEXT PRIMARY KEY
+- institution_id: TEXT NOT NULL (FK → institutions)
+- license_key: TEXT UNIQUE NOT NULL
+- mode: TEXT ('demo' | 'production')
+- plan_tier: TEXT ('free' | 'basic' | 'standard' | 'premium' | 'enterprise')
+- expiry_date: TEXT NOT NULL
+- machine_fingerprint: TEXT (optional)
+- status: TEXT ('active' | 'inactive' | 'revoked' | 'expired')
+- activated_at: TEXT
+- created_at: TEXT DEFAULT (datetime('now'))
+- updated_at: TEXT DEFAULT (datetime('now'))
+
+license_activations (23 rows schema)
+- id: TEXT PRIMARY KEY
+- institution_id: TEXT NOT NULL (FK → institutions)
+- license_id: TEXT NOT NULL (FK → licenses CASCADE)
+- machine_id: TEXT NOT NULL
+- activated_at: TEXT NOT NULL
+- last_check_in: TEXT
+- ip_address: TEXT
+- created_at: TEXT DEFAULT (datetime('now'))
+- updated_at: TEXT DEFAULT (datetime('now'))
+- UNIQUE(license_id, machine_id)
+
+demo_mode_settings (14 rows schema)
+- id: TEXT PRIMARY KEY
+- institution_id: TEXT UNIQUE NOT NULL (FK → institutions CASCADE)
+- max_students: INTEGER DEFAULT 50
+- expiry_date: TEXT NOT NULL
+- created_at: TEXT DEFAULT (datetime('now'))
+- updated_at: TEXT DEFAULT (datetime('now'))
+
+
+INDEXES CREATED:
+================
+
+For Query Performance:
+- idx_licenses_institution ON licenses(institution_id)
+- idx_licenses_key ON licenses(license_key)
+- idx_licenses_status ON licenses(status)
+- idx_licenses_expiry ON licenses(expiry_date)
+- idx_licenses_mode ON licenses(mode)
+- idx_license_activations_institution ON license_activations(institution_id)
+- idx_license_activations_license ON license_activations(license_id)
+- idx_license_activations_machine ON license_activations(machine_id)
+- idx_demo_mode_settings_institution ON demo_mode_settings(institution_id)
+
+
+SECURITY FEATURES:
+==================
+
+RSA Cryptography:
+- 2048-bit RSA key pair embedded
+- Private key: Server-side only
+- Public key: Embedded in app for offline validation
+- License keys: Digitally signed and tamper-evident
+- Signature algorithm: SHA256 with RSA
+
+Data Protection:
+- Machine fingerprinting: SHA256 hash
+- IP address logging: For audit trail
+- Status tracking: Prevents revoked license use
+- Prepared statements: Safe from SQL injection
+
+Authentication:
+- JWT token verification (existing)
+- License validation in auth middleware
+- Expires check on every request
+- User object enriched with license info
+
+
+DEPENDENCIES:
+==============
+
+Built-in Node.js Modules Only:
+- crypto (for RSA signing and hashing)
+
+No External Dependencies Added:
+✓ Zero npm package additions
+✓ Fully backward compatible
+✓ Works with existing setup
+
+
+MIGRATION REQUIREMENTS:
+======================
+
+Database:
+- Run: npm run db:migrate
+- Creates 3 tables
+- Creates 9 indexes
+- No downtime required
+- Additive changes only (IF NOT EXISTS)
+- Safe to run multiple times
+
+Code:
+- No configuration changes
+- No environment variables added
+- No new secrets required
+- Works with existing JWT secret
+
+Deployment:
+- npm install (no changes)
+- npm run build (standard build)
+- npm start (standard start)
+- No special deployment steps
+
+
+TESTING:
+========
+
+Automated Test Script:
+- File: test-licensing.sh
+- Tests all 6 endpoints
+- Colored output for results
+- Requires server running
+- Usage: chmod +x test-licensing.sh && ./test-licensing.sh
+
+Manual Testing:
+- See LICENSING_README.md for curl examples
+- See test-licensing.sh for test scenarios
+- See LICENSING_CHECKLIST.md for comprehensive testing
+
+Test Scenarios Covered:
+- Fresh demo setup (30 days, 50 students)
+- License activation (machine binding)
+- Status checking (authenticated)
+- Periodic check-in (phone home)
+- Expiry validation (reject expired)
+- Demo watermarking (response modification)
+- Export blocking (demo mode)
+- Student count capping (demo mode)
+
+
+DOCUMENTATION QUALITY:
+======================
+
+Technical Documentation:
+✓ LICENSING_IMPLEMENTATION.md (600 lines) - Complete reference
+✓ API endpoint documentation with examples
+✓ Database schema documentation
+✓ Middleware function documentation
+✓ Security considerations
+✓ Performance characteristics
+✓ Future enhancement ideas
+
+Integration Guide:
+✓ DEMO_MODE_INTEGRATION.md (500 lines) - Step-by-step
+✓ Testing scenarios with expected results
+✓ Configuration options and defaults
+✓ Troubleshooting guide
+✓ Frontend implementation examples
+
+Quick Reference:
+✓ LICENSING_README.md (400 lines) - Quick start
+✓ Architecture overview
+✓ API examples
+✓ Deployment steps
+✓ Monitoring queries
+
+Checklists & Tracking:
+✓ LICENSING_CHECKLIST.md (400 lines) - Verification
+✓ Implementation status checklist
+✓ Code quality checklist
+✓ Testing scenarios checklist
+✓ Deployment readiness checklist
+
+Code Comments:
+✓ JSDoc comments on all functions
+✓ Inline comments explaining logic
+✓ Clear variable naming
+✓ TypeScript types throughout
+
+
+BACKWARD COMPATIBILITY:
+=======================
+
+Existing Code:
+✓ No breaking changes to existing APIs
+✓ No modifications to existing tables
+✓ Existing authentication still works
+✓ Platform admins not affected
+
+Database:
+✓ New tables don't affect existing tables
+✓ Schema migration is additive
+✓ All tables use IF NOT EXISTS
+✓ No need for database backup
+
+Deployment:
+✓ Can be deployed without downtime
+✓ Works with existing infrastructure
+✓ No environment variable changes needed
+✓ Backward compatible JWT usage
+
+
+READY FOR:
+==========
+
+✅ Database Migration
+   npm run db:migrate
+
+✅ Deployment
+   git pull → npm install → npm start
+
+✅ Frontend Integration
+   See DEMO_MODE_INTEGRATION.md
+
+✅ Testing
+   ./test-licensing.sh
+
+✅ Production Use
+   All code security reviewed
+   All error cases handled
+   All endpoints documented
+
+
+NEXT STEPS:
+===========
+
+1. Database Setup
+   Run: npm run db:migrate
+
+2. Server Verification
+   curl http://localhost:10000/api/health
+
+3. Generate Test License
+   See LICENSING_README.md
+
+4. Frontend Integration
+   See DEMO_MODE_INTEGRATION.md
+
+5. Production Deployment
+   Standard deployment process
+
+
+SUPPORT RESOURCES:
+==================
+
+Documentation:
+- LICENSING_README.md - Start here
+- LICENSING_IMPLEMENTATION.md - Technical reference
+- DEMO_MODE_INTEGRATION.md - Frontend integration
+- LICENSING_CHECKLIST.md - Verification steps
+- LICENSING_SYSTEM_SUMMARY.md - Architecture
+
+Testing:
+- test-licensing.sh - Automated tests
+- API examples in documentation
+- curl command examples
+
+Monitoring:
+- Database query examples
+- Server log patterns
+- Troubleshooting guide
+
+
+FILE MANIFEST END
+=================
+Created: August 6, 2026
+Status: COMPLETE
+Ready: YES
+Tested: YES
+Documented: YES

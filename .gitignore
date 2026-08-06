@@ -58,5 +58,9 @@ frontend/.env.local
 # Old backend directory (now at root)
 backend/
 
+# License generator
+tools/licenses/*.json
+!tools/licenses/.gitkeep
+
 # Misc
 .cache/

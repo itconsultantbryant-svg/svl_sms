@@ -1,7 +1,10 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
+import { useLicense } from './contexts/LicenseContext';
 import MainLayout from './components/layout/MainLayout';
 import LoginPage from './pages/auth/LoginPage';
+import SetupWizard from './pages/licensing/SetupWizard';
+import DemoModeWatermark from './components/DemoModeWatermark';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import StudentsPage from './pages/students/StudentsPage';
 import StudentFormPage from './pages/students/StudentFormPage';
@@ -61,7 +64,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function App() {
+function AppContent() {
+  const { mode, isLoading } = useLicense();
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -69,8 +74,13 @@ export default function App() {
         path="/*"
         element={
           <ProtectedRoute>
-            <MainLayout>
-              <Routes>
+            {!mode && !localStorage.getItem('svl_license_mode') && !isLoading ? (
+              <SetupWizard />
+            ) : (
+              <>
+                <DemoModeWatermark />
+                <MainLayout>
+                  <Routes>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
 
@@ -172,11 +182,17 @@ export default function App() {
                 <Route path="/admission/enquiries/:id/edit" element={<EnquiryFormPage />} />
                 <Route path="/admission/applications" element={<ApplicationsPage />} />
                 <Route path="/admission/applications/new" element={<EnquiryFormPage />} />
-              </Routes>
-            </MainLayout>
+                  </Routes>
+                </MainLayout>
+              </>
+            )}
           </ProtectedRoute>
         }
       />
     </Routes>
   );
+}
+
+export default function App() {
+  return <AppContent />;
 }

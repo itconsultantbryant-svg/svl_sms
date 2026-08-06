@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { getDatabase } from '../database/init';
+import { isExpired, getDaysRemaining } from '../utils/licensing';
 
 // CRITICAL: Must match the secret in routes/auth.ts!
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
@@ -18,6 +19,12 @@ export interface AuthRequest extends Request {
     user_type: string;
     institution_id: string | null;
     branch_id: string | null;
+    // License fields
+    license_mode?: string;
+    license_expiry?: string;
+    license_tier?: string;
+    days_remaining?: number;
+    license_id?: string;
   };
   institution_id?: string | null;
 }
@@ -60,6 +67,64 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
       console.log('❌ User not found or inactive');
       res.status(401).json({ error: 'User not found or inactive' });
       return;
+    }
+
+    // Check license status after user is authenticated
+    const license = db
+      .prepare(
+        `
+        SELECT * FROM licenses
+        WHERE institution_id = ? AND status = 'active'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `
+      )
+      .get(user.institution_id) as any;
+
+    if (license) {
+      const expiryDate = new Date(license.expiry_date);
+      const expired = isExpired(expiryDate);
+
+      // Attach license info to user object
+      user.license_mode = license.mode;
+      user.license_expiry = license.expiry_date;
+      user.license_tier = license.plan_tier;
+      user.days_remaining = expired ? 0 : getDaysRemaining(expiryDate);
+      user.license_id = license.id;
+
+      // Check if license is expired
+      if (expired) {
+        if (license.mode === 'demo') {
+          console.log('❌ Demo license expired');
+          res.status(403).json({
+            error: 'Demo expired',
+            redirect: '/setup',
+            expiry: license.expiry_date,
+          });
+          return;
+        } else {
+          console.log('❌ Production license expired');
+          res.status(403).json({
+            error: 'License expired',
+            redirect: '/setup',
+            expiry: license.expiry_date,
+          });
+          return;
+        }
+      }
+    } else {
+      // No license found - might be okay for platform admins, but block others
+      if (
+        user.user_type !== 'platform_admin' &&
+        user.institution_id !== 'platform'
+      ) {
+        console.log('❌ No license found for institution');
+        res.status(403).json({
+          error: 'License required',
+          redirect: '/setup',
+        });
+        return;
+      }
     }
 
     req.user = user;

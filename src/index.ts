@@ -34,6 +34,8 @@ import { communicationRouter } from './routes/communication-simple';
 import { reportsRouter } from './routes/reports';
 import { platformAdminRouter } from './routes/platform-admin';
 import admissionRouter from './routes/admission';
+import { licensingRouter } from './routes/licensing';
+import { demoModeRouter } from './routes/demo-mode-enforcement';
 import { errorHandler } from './middleware/errorHandler';
 import { authenticate } from './middleware/auth';
 
@@ -82,6 +84,10 @@ app.get('/api/health', (req, res) => {
 
 // Auth routes (no auth middleware)
 app.use('/api/auth', authRouter);
+
+// Licensing routes (no auth required for activation, auth required for check)
+app.use('/api/licensing', licensingRouter);
+app.use('/api/demo-mode', demoModeRouter);
 
 // Protected routes (require authentication)
 app.use('/api/users', authenticate, usersRouter);

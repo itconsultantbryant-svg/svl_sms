@@ -1960,6 +1960,104 @@ CREATE TABLE IF NOT EXISTS performance_metrics (
 );
 
 -- ============================================
+-- SECTION 10: LICENSING & DEMO MODE
+-- License management, activation, and demo mode tracking
+-- ============================================
+
+-- ============================================
+-- LICENSES
+-- ============================================
+CREATE TABLE IF NOT EXISTS licenses (
+  id TEXT PRIMARY KEY,
+  institution_id TEXT NOT NULL REFERENCES institutions(id) ON DELETE CASCADE,
+
+  -- License Key & Identification
+  license_key TEXT UNIQUE NOT NULL,
+
+  -- License Mode
+  mode TEXT NOT NULL DEFAULT 'demo' CHECK(mode IN ('demo', 'production')),
+
+  -- License Tier
+  plan_tier TEXT NOT NULL CHECK(plan_tier IN ('free', 'basic', 'standard', 'premium', 'enterprise')),
+
+  -- License Validity
+  expiry_date TEXT NOT NULL,
+
+  -- Machine Binding (optional - for production licenses)
+  machine_fingerprint TEXT,
+
+  -- License Status
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'revoked', 'expired')),
+
+  -- Activation Tracking
+  activated_at TEXT,
+
+  -- Audit
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ============================================
+-- LICENSE ACTIVATIONS
+-- Track machine-specific activations and check-ins
+-- ============================================
+CREATE TABLE IF NOT EXISTS license_activations (
+  id TEXT PRIMARY KEY,
+  institution_id TEXT NOT NULL REFERENCES institutions(id) ON DELETE CASCADE,
+  license_id TEXT NOT NULL REFERENCES licenses(id) ON DELETE CASCADE,
+
+  -- Machine Identification
+  machine_id TEXT NOT NULL,
+
+  -- Activation Tracking
+  activated_at TEXT NOT NULL,
+  last_check_in TEXT,
+
+  -- Network Information
+  ip_address TEXT,
+
+  -- Audit
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+
+  UNIQUE(license_id, machine_id)
+);
+
+-- ============================================
+-- DEMO MODE SETTINGS
+-- Track demo mode usage per institution
+-- ============================================
+CREATE TABLE IF NOT EXISTS demo_mode_settings (
+  id TEXT PRIMARY KEY,
+  institution_id TEXT NOT NULL UNIQUE REFERENCES institutions(id) ON DELETE CASCADE,
+
+  -- Demo Limits
+  max_students INTEGER DEFAULT 50,
+
+  -- Demo Validity
+  expiry_date TEXT NOT NULL,
+
+  -- Audit
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ============================================
+-- INDEXES for Licensing
+-- ============================================
+CREATE INDEX IF NOT EXISTS idx_licenses_institution ON licenses(institution_id);
+CREATE INDEX IF NOT EXISTS idx_licenses_key ON licenses(license_key);
+CREATE INDEX IF NOT EXISTS idx_licenses_status ON licenses(status);
+CREATE INDEX IF NOT EXISTS idx_licenses_expiry ON licenses(expiry_date);
+CREATE INDEX IF NOT EXISTS idx_licenses_mode ON licenses(mode);
+
+CREATE INDEX IF NOT EXISTS idx_license_activations_institution ON license_activations(institution_id);
+CREATE INDEX IF NOT EXISTS idx_license_activations_license ON license_activations(license_id);
+CREATE INDEX IF NOT EXISTS idx_license_activations_machine ON license_activations(machine_id);
+
+CREATE INDEX IF NOT EXISTS idx_demo_mode_settings_institution ON demo_mode_settings(institution_id);
+
+-- ============================================
 -- INDEXES
 -- Comprehensive indexes for optimal query performance
 -- ============================================

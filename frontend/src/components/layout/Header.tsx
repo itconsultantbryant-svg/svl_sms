@@ -1,6 +1,7 @@
 import { Menu, LogOut, User, Search, Maximize2, Grid3x3, Globe, Bell, MessageSquare } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import InstitutionSelector from './InstitutionSelector';
+import DemoModeIndicator from '../DemoModeIndicator';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -40,6 +41,9 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
             <div className="h-6 w-px bg-gray-200"></div>
           </>
         )}
+
+        <DemoModeIndicator />
+        <div className="h-6 w-px bg-gray-200"></div>
 
         {/* Toolbar Icons */}
         <button className="text-gray-400 hover:text-gray-600 relative">
