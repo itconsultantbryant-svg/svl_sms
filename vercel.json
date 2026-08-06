@@ -1,61 +1,22 @@
 {
-  "version": 2,
-  "name": "svl-sms-frontend",
-  "public": false,
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "env": {
-    "VITE_API_URL": {
-      "description": "Backend API URL",
-      "default": "https://svl-sms-backend.onrender.com/api"
-    },
-    "VITE_APP_NAME": {
-      "description": "Application name",
-      "default": "SVL School Management System"
-    },
-    "VITE_APP_VERSION": {
-      "description": "Application version",
-      "default": "1.0.0"
-    }
-  },
+  "installCommand": "cd frontend && npm install --legacy-peer-deps",
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/dist",
   "rewrites": [
     {
       "source": "/api/:path*",
       "destination": "https://svl-sms-backend.onrender.com/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [
     {
-      "source": "/api/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache, no-store, must-revalidate"
-        },
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "SAMEORIGIN"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        }
-      ]
-    },
-    {
-      "source": "/(.*)",
-      "has": [
-        {
-          "type": "header",
-          "key": "content-encoding",
-          "value": "gzip"
-        }
-      ],
+      "source": "/assets/(.*)",
       "headers": [
         {
           "key": "Cache-Control",
@@ -64,24 +25,6 @@
       ]
     }
   ],
-  "routes": [
-    {
-      "src": "^/(?!api)(.*)$",
-      "status": 200,
-      "dest": "/index.html"
-    }
-  ],
   "cleanUrls": true,
-  "trailingSlash": false,
-  "functions": {
-    "frontend/**/*.js": {
-      "maxDuration": 60
-    }
-  },
-  "regions": ["sfo1"],
-  "git": {
-    "deploymentEnabled": {
-      "main": true
-    }
-  }
+  "trailingSlash": false
 }
