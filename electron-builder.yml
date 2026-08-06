@@ -25,10 +25,10 @@ extraMetadata:
   main: dist/electron/main.js
 
 asar: true
+# Only unpack native binaries. Keep JS (backend + node_modules) inside asar
+# so require('express') etc. resolve correctly when spawned with ELECTRON_RUN_AS_NODE.
 asarUnpack:
   - '**/*.node'
-  - dist/backend/**/*
-  - node_modules/better-sqlite3/**/*
 
 # Windows — classic Setup.exe installer (zipped after build for distribution)
 win:

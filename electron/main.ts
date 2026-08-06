@@ -81,12 +81,14 @@ async function spawnBackend(): Promise<number> {
 
     const backendPath = isDev
       ? path.join(__dirname, '../src/index.ts')
-      : resolveAppResource('dist', 'backend', 'index.js');
+      : path.join(app.getAppPath(), 'dist', 'backend', 'index.js');
 
-    let env = { ...process.env };
+    logMessage(`Backend entry: ${backendPath}`);
+
+    const env: NodeJS.ProcessEnv = { ...process.env };
     env.NODE_ENV = isDev ? 'development' : 'production';
     env.PORT = port.toString();
-    env.CORS_ORIGINS = 'http://localhost:*,app://localhost';
+    env.CORS_ORIGINS = 'http://localhost:*,app://localhost,file://*';
     // Keep SQLite writable outside the read-only app bundle
     env.DB_PATH = path.join(app.getPath('userData'), 'svl-sms.db');
 
@@ -101,12 +103,24 @@ async function spawnBackend(): Promise<number> {
       command = process.execPath;
       args = [backendPath];
       env.ELECTRON_RUN_AS_NODE = '1';
+
+      // Ensure deps resolve from app.asar/node_modules (and any unpacked natives)
+      const appPath = app.getAppPath();
+      const unpackedRoot = appPath.includes('app.asar')
+        ? appPath.replace('app.asar', 'app.asar.unpacked')
+        : appPath;
+      env.NODE_PATH = [
+        path.join(appPath, 'node_modules'),
+        path.join(unpackedRoot, 'node_modules'),
+      ].join(path.delimiter);
     }
 
     backendProcess = spawn(command, args, {
       env,
+      cwd: isDev ? path.join(__dirname, '..') : app.getAppPath(),
       stdio: ['ignore', 'pipe', 'pipe'],
-      detached: isWindows ? false : true,
+      // Keep attached so the backend dies with the app and inherits asar support cleanly
+      detached: false,
     });
 
     // Handle backend output
