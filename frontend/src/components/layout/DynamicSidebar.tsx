@@ -5,7 +5,8 @@ import {
   BookOpen, Settings, X, ClipboardCheck, Clock, ClipboardList,
   DollarSign, Library, Package, Bus, Award, Briefcase,
   Send, BarChart3, Shield, CheckSquare,
-  TrendingUp, UserCheck, BookMarked, Calendar
+  TrendingUp, UserCheck, BookMarked, Calendar,
+  ChevronDown, ChevronRight, Search
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../utils/api';
@@ -24,7 +25,6 @@ interface MenuItem {
   userTypes?: string[];
 }
 
-// Complete navigation structure with permissions
 const ALL_NAVIGATION: MenuItem[] = [
   {
     name: 'Dashboard',
@@ -33,25 +33,59 @@ const ALL_NAVIGATION: MenuItem[] = [
     permission: 'dashboard.view',
     userTypes: ['platform_admin', 'institution_admin', 'teacher', 'student', 'parent', 'staff']
   },
-
-  // Platform Admin Only
   {
     name: 'Platform Admin',
     href: '/platform-admin',
     icon: Shield,
     userTypes: ['platform_admin']
   },
-
-  // Students
   {
-    name: 'Students',
-    href: '/students',
+    name: 'Inventory',
+    icon: Package,
+    permission: 'dashboard.view',
+    userTypes: ['platform_admin', 'institution_admin', 'staff'],
+    children: [
+      { name: 'Item List', href: '/inventory', permission: 'dashboard.view' },
+      { name: 'Issue Items', href: '/inventory/issue', permission: 'dashboard.view' },
+    ]
+  },
+  {
+    name: 'Branch',
+    href: '/branches',
+    icon: Building2,
+    permission: 'settings.view',
+    userTypes: ['platform_admin', 'institution_admin']
+  },
+  {
+    name: 'Reception',
+    icon: Users,
+    permission: 'dashboard.view',
+    userTypes: ['platform_admin', 'institution_admin', 'staff'],
+    children: [
+      { name: 'Enquiry', href: '/reception/enquiry', permission: 'dashboard.view' },
+      { name: 'Visitors', href: '/reception/visitors', permission: 'dashboard.view' },
+    ]
+  },
+  {
+    name: 'Admission',
+    icon: ClipboardCheck,
+    permission: 'students.view',
+    userTypes: ['platform_admin', 'institution_admin', 'staff'],
+    children: [
+      { name: 'New Admission', href: '/students/new', permission: 'students.create' },
+      { name: 'Bulk Admission', href: '/students/bulk', permission: 'students.create' },
+    ]
+  },
+  {
+    name: 'Student Details',
     icon: GraduationCap,
     permission: 'students.view',
-    userTypes: ['platform_admin', 'institution_admin', 'teacher', 'staff']
+    userTypes: ['platform_admin', 'institution_admin', 'teacher', 'staff'],
+    children: [
+      { name: 'All Students', href: '/students', permission: 'students.view' },
+      { name: 'Promote Students', href: '/students/promote', permission: 'students.view' },
+    ]
   },
-
-  // Parents
   {
     name: 'Parents',
     href: '/parents',
@@ -59,57 +93,16 @@ const ALL_NAVIGATION: MenuItem[] = [
     permission: 'students.view',
     userTypes: ['platform_admin', 'institution_admin', 'staff']
   },
-
-  // Teachers
   {
-    name: 'Teachers',
-    href: '/teachers',
-    icon: UserCircle,
-    permission: 'teachers.view',
-    userTypes: ['platform_admin', 'institution_admin']
+    name: 'Employee',
+    icon: Briefcase,
+    permission: 'users.view',
+    userTypes: ['platform_admin', 'institution_admin'],
+    children: [
+      { name: 'Teachers', href: '/teachers', permission: 'teachers.view' },
+      { name: 'Staff', href: '/payroll', permission: 'users.view' },
+    ]
   },
-
-  // Teacher-specific: My Classes
-  {
-    name: 'My Classes',
-    href: '/teacher/classes',
-    icon: BookMarked,
-    userTypes: ['teacher']
-  },
-
-  // Teacher-specific: My Students
-  {
-    name: 'My Students',
-    href: '/teacher/students',
-    icon: UserCheck,
-    userTypes: ['teacher']
-  },
-
-  // Student-specific: My Grades
-  {
-    name: 'My Grades',
-    href: '/student/grades',
-    icon: TrendingUp,
-    userTypes: ['student']
-  },
-
-  // Student-specific: My Assignments
-  {
-    name: 'My Assignments',
-    href: '/student/assignments',
-    icon: CheckSquare,
-    userTypes: ['student']
-  },
-
-  // Parent-specific: My Children
-  {
-    name: 'My Children',
-    href: '/parent/children',
-    icon: Users,
-    userTypes: ['parent']
-  },
-
-  // Academics
   {
     name: 'Academics',
     icon: BookOpen,
@@ -119,45 +112,16 @@ const ALL_NAVIGATION: MenuItem[] = [
       { name: 'Sessions', href: '/academics/sessions', permission: 'settings.view' },
       { name: 'Classes', href: '/academics/classes', permission: 'dashboard.view' },
       { name: 'Subjects', href: '/academics/subjects', permission: 'dashboard.view' },
+      { name: 'Timetable', href: '/timetable', permission: 'timetable.view' },
     ]
   },
-
-  // Attendance
   {
     name: 'Attendance',
     href: '/attendance',
-    icon: ClipboardCheck,
+    icon: Calendar,
     permission: 'attendance.view',
     userTypes: ['platform_admin', 'institution_admin', 'teacher', 'staff']
   },
-
-  // Student Attendance View
-  {
-    name: 'My Attendance',
-    href: '/student/attendance',
-    icon: Calendar,
-    userTypes: ['student']
-  },
-
-  // Assignments (for admins/teachers)
-  {
-    name: 'Assignments',
-    href: '/assignments',
-    icon: CheckSquare,
-    permission: 'assignments.view',
-    userTypes: ['platform_admin', 'institution_admin', 'teacher']
-  },
-
-  // Timetable
-  {
-    name: 'Timetable',
-    href: '/timetable',
-    icon: Clock,
-    permission: 'timetable.view',
-    userTypes: ['platform_admin', 'institution_admin', 'teacher', 'student', 'staff']
-  },
-
-  // Examinations
   {
     name: 'Examinations',
     href: '/examinations',
@@ -165,8 +129,6 @@ const ALL_NAVIGATION: MenuItem[] = [
     permission: 'exams.view',
     userTypes: ['platform_admin', 'institution_admin', 'teacher']
   },
-
-  // Grades & Results
   {
     name: 'Grades & Results',
     icon: Award,
@@ -178,8 +140,6 @@ const ALL_NAVIGATION: MenuItem[] = [
       { name: 'Results', href: '/results', permission: 'results.view' },
     ]
   },
-
-  // Finance
   {
     name: 'Finance',
     icon: DollarSign,
@@ -192,8 +152,6 @@ const ALL_NAVIGATION: MenuItem[] = [
       { name: 'Accounts', href: '/accounts', permission: 'accounts.view' },
     ]
   },
-
-  // Library
   {
     name: 'Library',
     href: '/library',
@@ -201,17 +159,6 @@ const ALL_NAVIGATION: MenuItem[] = [
     permission: 'library.view',
     userTypes: ['platform_admin', 'institution_admin', 'staff']
   },
-
-  // Inventory
-  {
-    name: 'Inventory',
-    href: '/inventory',
-    icon: Package,
-    permission: 'dashboard.view',
-    userTypes: ['platform_admin', 'institution_admin', 'staff']
-  },
-
-  // Transport
   {
     name: 'Transport',
     href: '/transport',
@@ -219,17 +166,15 @@ const ALL_NAVIGATION: MenuItem[] = [
     permission: 'transport.view',
     userTypes: ['platform_admin', 'institution_admin', 'staff']
   },
-
-  // HR & Payroll
   {
-    name: 'HR & Payroll',
-    href: '/payroll',
+    name: 'Human Resource',
     icon: Briefcase,
     permission: 'users.view',
-    userTypes: ['platform_admin', 'institution_admin']
+    userTypes: ['platform_admin', 'institution_admin'],
+    children: [
+      { name: 'HR & Payroll', href: '/payroll', permission: 'users.view' },
+    ]
   },
-
-  // Communication
   {
     name: 'Communication',
     href: '/communication',
@@ -237,8 +182,13 @@ const ALL_NAVIGATION: MenuItem[] = [
     permission: 'communication.view',
     userTypes: ['platform_admin', 'institution_admin', 'teacher', 'staff']
   },
-
-  // Reports
+  {
+    name: 'Certificate',
+    href: '/certificates',
+    icon: Award,
+    permission: 'dashboard.view',
+    userTypes: ['platform_admin', 'institution_admin']
+  },
   {
     name: 'Reports',
     href: '/reports',
@@ -246,17 +196,6 @@ const ALL_NAVIGATION: MenuItem[] = [
     permission: 'reports.view',
     userTypes: ['platform_admin', 'institution_admin', 'teacher', 'staff']
   },
-
-  // Branches
-  {
-    name: 'Branches',
-    href: '/branches',
-    icon: Building2,
-    permission: 'settings.view',
-    userTypes: ['platform_admin', 'institution_admin']
-  },
-
-  // Settings
   {
     name: 'Settings',
     href: '/settings',
@@ -264,8 +203,6 @@ const ALL_NAVIGATION: MenuItem[] = [
     permission: 'settings.view',
     userTypes: ['platform_admin', 'institution_admin']
   },
-
-  // Roles & Permissions
   {
     name: 'Roles & Permissions',
     href: '/permissions/roles',
@@ -273,12 +210,60 @@ const ALL_NAVIGATION: MenuItem[] = [
     permission: 'roles.view',
     userTypes: ['platform_admin', 'institution_admin']
   },
+  // Teacher-specific
+  {
+    name: 'My Classes',
+    href: '/teacher/classes',
+    icon: BookMarked,
+    userTypes: ['teacher']
+  },
+  {
+    name: 'My Students',
+    href: '/teacher/students',
+    icon: UserCheck,
+    userTypes: ['teacher']
+  },
+  // Student-specific
+  {
+    name: 'My Grades',
+    href: '/student/grades',
+    icon: TrendingUp,
+    userTypes: ['student']
+  },
+  {
+    name: 'My Assignments',
+    href: '/student/assignments',
+    icon: CheckSquare,
+    userTypes: ['student']
+  },
+  {
+    name: 'My Attendance',
+    href: '/student/attendance',
+    icon: Calendar,
+    userTypes: ['student']
+  },
+  // Parent-specific
+  {
+    name: 'My Children',
+    href: '/parent/children',
+    icon: Users,
+    userTypes: ['parent']
+  },
+  // Assignments for admin/teachers
+  {
+    name: 'Assignments',
+    href: '/assignments',
+    icon: CheckSquare,
+    permission: 'assignments.view',
+    userTypes: ['platform_admin', 'institution_admin', 'teacher']
+  },
 ];
 
 export default function DynamicSidebar({ open, onClose }: SidebarProps) {
   const { user } = useAuth();
   const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   useEffect(() => {
     fetchPermissions();
@@ -299,12 +284,9 @@ export default function DynamicSidebar({ open, onClose }: SidebarProps) {
   const hasPermission = (permission?: string): boolean => {
     if (!permission) return true;
     if (!user) return false;
-
-    // Platform admins and institution admins have all permissions
     if (user.user_type === 'platform_admin' || user.user_type === 'institution_admin') {
       return true;
     }
-
     return permissions.includes(permission);
   };
 
@@ -318,54 +300,68 @@ export default function DynamicSidebar({ open, onClose }: SidebarProps) {
     return hasUserType(item.userTypes) && hasPermission(item.permission);
   };
 
+  const toggleExpanded = (name: string) => {
+    setExpandedItems(prev =>
+      prev.includes(name)
+        ? prev.filter(n => n !== name)
+        : [...prev, name]
+    );
+  };
+
   const filteredNavigation = ALL_NAVIGATION.filter(item => {
     if (!shouldShowItem(item)) return false;
-
-    // If item has children, filter them too
     if (item.children) {
-      item.children = item.children.filter(child =>
-        hasPermission(child.permission)
-      );
-      // Don't show parent if no children are visible
+      item.children = item.children.filter(child => hasPermission(child.permission));
       return item.children.length > 0;
     }
-
     return true;
   });
 
   if (!open) return null;
 
   return (
-    <aside className="fixed inset-y-0 left-0 w-64 bg-primary-900 text-white flex flex-col z-30">
-      <div className="flex items-center justify-between h-16 px-4 border-b border-primary-800">
-        <div>
-          <h1 className="text-sm font-bold tracking-wide">SOFTWAREVALA LIBERIA</h1>
-          <p className="text-[10px] text-primary-300 tracking-wider">SCHOOL MANAGEMENT SYSTEM</p>
+    <aside className="fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200 flex flex-col z-30 shadow-sm">
+      {/* Logo / Brand */}
+      <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
+            <span className="text-white text-xs font-bold">S</span>
+          </div>
+          <div>
+            <h1 className="text-xs font-bold text-gray-900 tracking-wide">SVL-SMS</h1>
+            <p className="text-[9px] text-gray-500">School Management</p>
+          </div>
         </div>
-        <button onClick={onClose} className="lg:hidden text-primary-300 hover:text-white">
+        <button onClick={onClose} className="lg:hidden text-gray-400 hover:text-gray-600">
           <X size={20} />
         </button>
       </div>
 
-      {/* User Info */}
-      {user && (
-        <div className="px-4 py-3 bg-primary-800 border-b border-primary-700">
-          <p className="text-sm font-medium text-white">
-            {user.first_name} {user.last_name}
-          </p>
-          <p className="text-xs text-primary-300 capitalize">
-            {user.user_type?.replace('_', ' ')}
-          </p>
+      {/* Search */}
+      <div className="px-3 py-3 border-b border-gray-100">
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search..."
+            className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
         </div>
-      )}
+      </div>
 
-      <nav className="flex-1 py-4 overflow-y-auto">
+      {/* Section Label */}
+      <div className="px-4 pt-3 pb-1">
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Main</p>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="px-4 py-8 text-center text-primary-300 text-sm">
+          <div className="px-4 py-8 text-center text-gray-400 text-sm">
             Loading menu...
           </div>
         ) : filteredNavigation.length === 0 ? (
-          <div className="px-4 py-8 text-center text-primary-300 text-sm">
+          <div className="px-4 py-8 text-center text-gray-400 text-sm">
             No menu items available
           </div>
         ) : (
@@ -375,34 +371,45 @@ export default function DynamicSidebar({ open, onClose }: SidebarProps) {
                 <NavLink
                   to={item.href}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                    `flex items-center gap-3 px-4 py-2.5 text-sm transition-colors border-l-3 ${
                       isActive
-                        ? 'bg-primary-800 text-white border-r-4 border-white'
-                        : 'text-primary-200 hover:bg-primary-800 hover:text-white'
+                        ? 'bg-blue-50 text-blue-700 border-l-[3px] border-yellow-400 font-medium'
+                        : 'text-gray-700 hover:bg-gray-50 border-l-[3px] border-transparent'
                     }`
                   }
                 >
-                  <item.icon size={18} />
-                  {item.name}
+                  <item.icon size={18} className="shrink-0" />
+                  <span className="truncate">{item.name}</span>
                 </NavLink>
               ) : (
                 <div>
-                  <div className="flex items-center gap-3 px-4 py-2.5 text-sm text-primary-300 font-medium uppercase tracking-wider mt-4">
-                    <item.icon size={18} />
-                    {item.name}
-                  </div>
-                  {item.children?.map((child) => (
+                  <button
+                    onClick={() => toggleExpanded(item.name)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 border-l-[3px] border-transparent transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <item.icon size={18} className="shrink-0" />
+                      <span className="truncate">{item.name}</span>
+                    </div>
+                    {expandedItems.includes(item.name) ? (
+                      <ChevronDown size={14} className="text-gray-400" />
+                    ) : (
+                      <ChevronRight size={14} className="text-gray-400" />
+                    )}
+                  </button>
+                  {expandedItems.includes(item.name) && item.children?.map((child) => (
                     <NavLink
                       key={child.href}
                       to={child.href}
                       className={({ isActive }) =>
                         `flex items-center gap-3 pl-11 pr-4 py-2 text-sm transition-colors ${
                           isActive
-                            ? 'bg-primary-800 text-white'
-                            : 'text-primary-200 hover:bg-primary-800 hover:text-white'
+                            ? 'text-blue-700 bg-blue-50 font-medium'
+                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                         }`
                       }
                     >
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
                       {child.name}
                     </NavLink>
                   ))}
@@ -413,8 +420,9 @@ export default function DynamicSidebar({ open, onClose }: SidebarProps) {
         )}
       </nav>
 
-      <div className="p-4 border-t border-primary-800">
-        <p className="text-[10px] text-primary-400 text-center">
+      {/* Footer */}
+      <div className="p-3 border-t border-gray-200">
+        <p className="text-[10px] text-gray-400 text-center">
           &copy; 2026 Softwarevala Liberia
         </p>
       </div>

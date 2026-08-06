@@ -10,6 +10,8 @@ export interface AuthRequest extends Request {
     id: string;
     username: string;
     email: string;
+    first_name: string | null;
+    last_name: string | null;
     role_id: string | null;
     role_name: string | null;
     role_code: string | null;
@@ -43,7 +45,8 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
     // LEFT JOIN because role_id might be NULL
     const user = db.prepare(`
       SELECT
-        u.id, u.username, u.email, u.role_id, u.user_type,
+        u.id, u.username, u.email, u.first_name, u.last_name,
+        u.role_id, u.user_type,
         u.institution_id, u.branch_id,
         r.role_code, r.role_name
       FROM users u
