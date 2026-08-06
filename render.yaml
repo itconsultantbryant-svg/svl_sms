@@ -1,11 +1,11 @@
 services:
   - type: web
     name: svl-sms-backend
-    runtime: node
+    runtime: custom
     region: oregon
     plan: standard
-    buildCommand: bash .render-build.sh
-    startCommand: npm start
+    buildCommand: npm ci && npm run build
+    startCommand: bash .render-build.sh && npm start
     envVars:
       - key: NODE_ENV
         value: production

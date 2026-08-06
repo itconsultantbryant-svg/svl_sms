@@ -28,13 +28,18 @@
     "appId": "com.svl-sms.desktop",
     "productName": "SVL-SMS",
     "files": [
-      "dist/electron/**/*",
-      "dist/frontend/**/*",
-      "dist/backend/**/*",
+      "dist/electron/main.js",
+      "dist/electron/preload.js",
+      "frontend/dist/**/*",
+      "dist/**/*",
+      "node_modules/**/*",
       "package.json"
     ],
     "directories": {
       "buildResources": "assets"
+    },
+    "extraMetadata": {
+      "main": "dist/electron/main.js"
     },
     "win": {
       "target": [
@@ -79,12 +84,7 @@
     "@types/cors": "^2.8.17",
     "@types/node": "^20.10.6",
     "@types/uuid": "^9.0.7",
-    "tsx": "^4.7.0",
-    "electron": "^latest",
-    "electron-builder": "^latest",
-    "electron-is-dev": "^latest",
-    "concurrently": "^latest",
-    "wait-on": "^latest"
+    "tsx": "^4.7.0"
   },
   "engines": {
     "node": "20.x"
