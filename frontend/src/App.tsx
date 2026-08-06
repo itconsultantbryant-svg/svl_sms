@@ -41,6 +41,12 @@ import EnquiryFormPage from './pages/admission/EnquiryFormPage';
 import ApplicationsPage from './pages/admission/ApplicationsPage';
 import RolesPage from './pages/permissions/RolesPage';
 import AssignmentsPage from './pages/assignments/AssignmentsPage';
+import TeacherClassesPage from './pages/teacher/TeacherClassesPage';
+import TeacherStudentsPage from './pages/teacher/TeacherStudentsPage';
+import StudentGradesPage from './pages/student/StudentGradesPage';
+import StudentAssignmentsPage from './pages/student/StudentAssignmentsPage';
+import StudentAttendancePage from './pages/student/StudentAttendancePage';
+import ParentChildrenPage from './pages/parent/ParentChildrenPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -140,6 +146,18 @@ export default function App() {
 
                 {/* Roles & Permissions */}
                 <Route path="/permissions/roles" element={<RolesPage />} />
+
+                {/* Teacher Portal */}
+                <Route path="/teacher/classes" element={<TeacherClassesPage />} />
+                <Route path="/teacher/students" element={<TeacherStudentsPage />} />
+
+                {/* Student Portal */}
+                <Route path="/student/grades" element={<StudentGradesPage />} />
+                <Route path="/student/assignments" element={<StudentAssignmentsPage />} />
+                <Route path="/student/attendance" element={<StudentAttendancePage />} />
+
+                {/* Parent Portal */}
+                <Route path="/parent/children" element={<ParentChildrenPage />} />
 
                 {/* Platform Admin */}
                 <Route path="/platform-admin" element={<PlatformDashboardPage />} />
