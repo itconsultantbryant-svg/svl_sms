@@ -59,7 +59,20 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API Error:', error.message, error.config?.url);
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    const url = String(error.config?.url || '');
+    const onLoginPage =
+      typeof window !== 'undefined' && window.location.pathname.startsWith('/login');
+    const hadToken = !!localStorage.getItem('svl_token');
+
+    // Only force logout/redirect when an existing session becomes invalid.
+    // Unauthenticated public calls (license check before login) must not reload the page.
+    const isPublicAuthCall =
+      url.includes('/auth/login') ||
+      url.includes('/licensing/check') ||
+      url.includes('/licensing/activate');
+
+    if (status === 401 && hadToken && !onLoginPage && !isPublicAuthCall) {
       localStorage.removeItem('svl_token');
       localStorage.removeItem('svl_user');
       window.location.href = '/login';

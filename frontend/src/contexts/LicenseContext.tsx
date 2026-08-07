@@ -92,10 +92,17 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     if (savedMode) {
       setModeState(savedMode);
       setIsLoading(false);
-    } else {
-      // Try to fetch license from server
-      fetchLicense();
+      return;
     }
+
+    // License status is institution-scoped and requires auth — skip until logged in
+    const token = localStorage.getItem('svl_token');
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
+    fetchLicense();
   }, []);
 
   const setMode = (newMode: 'demo' | 'production') => {
