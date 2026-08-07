@@ -41,6 +41,7 @@ const ALL_NAVIGATION: MenuItem[] = [
       { name: 'Dashboard', href: '/platform-admin' },
       { name: 'Institutions', href: '/platform-admin/institutions' },
       { name: 'License Keys', href: '/platform-admin/licenses' },
+      { name: 'Users', href: '/platform-admin/users' },
     ],
   },
   {
