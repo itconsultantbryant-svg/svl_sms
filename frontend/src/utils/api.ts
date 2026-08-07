@@ -1,9 +1,17 @@
 import axios from 'axios';
 
-// CRITICAL: Vite requires import.meta.env for environment variables
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+function resolveApiBaseUrl(): string {
+  const raw = (import.meta.env.VITE_API_URL || '').trim();
+  const fallback = 'http://localhost:3001/api';
+  if (!raw) return fallback;
 
-// Debug logging
+  // Accept either https://host or https://host/api
+  const normalized = raw.replace(/\/+$/, '');
+  return normalized.endsWith('/api') ? normalized : `${normalized}/api`;
+}
+
+const baseURL = resolveApiBaseUrl();
+
 console.log('=== API CONFIGURATION ===');
 console.log('Environment:', import.meta.env.MODE);
 console.log('VITE_API_URL from env:', import.meta.env.VITE_API_URL);
@@ -11,7 +19,7 @@ console.log('Using baseURL:', baseURL);
 console.log('========================');
 
 export const api = axios.create({
-  baseURL: baseURL,
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },

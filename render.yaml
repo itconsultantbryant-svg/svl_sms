@@ -18,9 +18,9 @@ services:
       - key: LICENSE_PRIVATE_KEY
         sync: false
       - key: CORS_ORIGINS
-        value: https://svl-sms-frontend.onrender.com
+        value: https://svl-sms.vercel.app,https://svl-sms-frontend.vercel.app
       - key: FRONTEND_URL
-        value: https://svl-sms-frontend.onrender.com
+        value: https://svl-sms.vercel.app
     healthCheckPath: /api/health
     disk:
       name: svl-sms-data

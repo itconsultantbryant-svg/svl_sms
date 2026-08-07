@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  const apiUrl = (env.VITE_API_URL || '').trim();
 
   return {
     plugins: [react()],
@@ -13,8 +14,11 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       sourcemap: false,
     },
-    define: {
-      'import.meta.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL),
-    },
+    // Only override when a real value exists — never bake in `undefined`
+    define: apiUrl
+      ? {
+          'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl),
+        }
+      : undefined,
   };
 });
