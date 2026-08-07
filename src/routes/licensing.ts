@@ -18,14 +18,18 @@ export const licensingRouter = Router();
  */
 licensingRouter.post('/activate', (req: AuthRequest, res: Response): void => {
   try {
-    const { license_key, machine_id, institution_id } = req.body;
+    const { license_key: lk1, key: lk2, machine_id: mid, institution_id } = req.body;
+    const license_key = lk1 || lk2;
 
-    if (!license_key || !machine_id) {
+    if (!license_key) {
       res.status(400).json({
-        error: 'Missing required fields: license_key, machine_id',
+        error: 'Missing required field: license_key',
       });
       return;
     }
+
+    // Auto-generate machine_id if not provided (for web deployments)
+    const machine_id = mid || `web-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
     const db = getDatabase();
 

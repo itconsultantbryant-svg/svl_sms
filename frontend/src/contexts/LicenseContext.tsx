@@ -67,24 +67,86 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       const days = calculateDaysRemaining(expiryDate);
       setDaysRemaining(days);
       setIsExpired(days < 0);
-    } catch (err) {
-      console.error('License check failed:', err);
-      setError('Failed to verify license');
+    } catch (err: any) {
+      const status = err?.response?.status;
+      // 403 (License required) or 404 (No license): show SetupWizard, not demo fallback
+      if (status === 403 || status === 404) {
+        console.log('No active license — showing setup wizard');
+        setModeState(null);
+        setError('No active license');
+        setIsExpired(false);
+        setExpiry(null);
+        setPlanTier(null);
+        setDaysRemaining(null);
+        setFeatures(DEFAULT_DEMO_FEATURES);
+      } else {
+        // Network or server error: fall back to demo mode with 30-day expiry
+        console.error('License check failed:', err);
+        setError('Failed to verify license');
 
-      // Fall back to demo mode with 30-day expiry
-      const demoExpiry = new Date();
-      demoExpiry.setDate(demoExpiry.getDate() + 30);
+        const demoExpiry = new Date();
+        demoExpiry.setDate(demoExpiry.getDate() + 30);
 
-      setModeState('demo');
-      setExpiry(demoExpiry);
-      setPlanTier('demo');
-      setFeatures(DEFAULT_DEMO_FEATURES);
-      setDaysRemaining(30);
-      setIsExpired(false);
+        setModeState('demo');
+        setExpiry(demoExpiry);
+        setPlanTier('demo');
+        setFeatures(DEFAULT_DEMO_FEATURES);
+        setDaysRemaining(30);
+        setIsExpired(false);
+      }
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Re-check license when user changes (login/logout) — listen for custom event
+  useEffect(() => {
+    const onUserChanged = () => {
+      try {
+        const raw = localStorage.getItem('svl_user');
+        if (raw) {
+          const u = JSON.parse(raw);
+          if (u?.user_type === 'platform_admin') {
+            setModeState('production');
+            setPlanTier('enterprise');
+            setFeatures(DEFAULT_PRODUCTION_FEATURES);
+            setExpiry(null);
+            setDaysRemaining(null);
+            setIsExpired(false);
+            setError(null);
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch {}
+      fetchLicense();
+    };
+
+    window.addEventListener('svl:user-changed', onUserChanged as EventListener);
+    return () => window.removeEventListener('svl:user-changed', onUserChanged as EventListener);
+  }, []);
+
+  // A 403 "license required" response from any endpoint means the institution
+  // needs to (re)activate. Re-run the license check so mode flips to null and
+  // the SetupWizard gate takes over. Debounced so a 403 flood only triggers
+  // one re-check.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onLicenseRequired = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        console.log('🔁 svl:license-required — re-checking license');
+        fetchLicense();
+      }, 300);
+    };
+
+    window.addEventListener('svl:license-required', onLicenseRequired as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('svl:license-required', onLicenseRequired as EventListener);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     // Platform superadmin is never gated by school license modes
@@ -107,9 +169,9 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       // ignore parse errors
     }
 
-    // Check if user has explicitly chosen a mode
+    // Check if user has explicitly chosen a mode (only if valid)
     const savedMode = localStorage.getItem('svl_license_mode') as 'demo' | 'production' | null;
-    if (savedMode) {
+    if (savedMode && localStorage.getItem('svl_token')) {
       setModeState(savedMode);
       setIsLoading(false);
       return;

@@ -77,6 +77,28 @@ api.interceptors.response.use(
       localStorage.removeItem('svl_user');
       window.location.href = '/login';
     }
+
+    // A 403 with a license-related payload means the institution has no active
+    // license (or it expired). Surface it to LicenseContext so it flips mode to
+    // null and the SetupWizard gate takes over — instead of a flood of 403s on
+    // every dashboard call. No hard redirect: LicenseContext drives the UI.
+    if (status === 403 && hadToken && !isPublicAuthCall) {
+      const msg = String(
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        ''
+      ).toLowerCase();
+      const isLicenseError =
+        msg.includes('license') ||
+        msg.includes('license required') ||
+        msg.includes('no active license') ||
+        msg.includes('expired');
+
+      if (isLicenseError && typeof window !== 'undefined') {
+        console.log('📄 License 403 detected — notifying LicenseContext:', msg);
+        window.dispatchEvent(new Event('svl:license-required'));
+      }
+    }
     return Promise.reject(error);
   }
 );

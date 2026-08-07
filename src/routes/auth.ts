@@ -20,7 +20,8 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
     const db = getDatabase();
 
-    // FIXED: Use correct column names from database schema
+    // Accept username OR email (case-insensitive, trimmed)
+    const identifier = (username || '').trim().toLowerCase();
     const user = db.prepare(`
       SELECT u.*,
              r.role_code, r.role_name,
@@ -30,15 +31,17 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       LEFT JOIN roles r ON u.role_id = r.id
       LEFT JOIN institutions i ON u.institution_id = i.id
       LEFT JOIN branches b ON u.branch_id = b.id
-      WHERE u.username = ? AND u.is_active = 1
-    `).get(username) as any;
+      WHERE u.is_active = 1
+        AND (LOWER(u.username) = ? OR LOWER(u.email) = ?)
+      LIMIT 1
+    `).get(identifier, identifier) as any;
 
     if (!user) {
       console.log('User not found:', username);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    console.log('User found:', { username: user.username, hasPassword: !!user.password_hash });
+    console.log('User found:', { username: user.username, userType: user.user_type, hasPassword: !!user.password_hash });
 
     // FIXED: Use password_hash column
     const isValidPassword = await bcrypt.compare(password, user.password_hash);

@@ -33,8 +33,26 @@ export default function SetupWizard() {
     setError(null);
 
     try {
-      const res = await api.post('/licensing/activate', { key: licenseKey });
-      const { expiry, plan_tier } = res.data;
+      // Generate a stable machine ID for this browser
+      let machineId = localStorage.getItem('svl_machine_id');
+      if (!machineId) {
+        machineId = 'web-' + crypto.randomUUID();
+        localStorage.setItem('svl_machine_id', machineId);
+      }
+
+      // Get institution_id from the logged-in user
+      let institutionId: string | undefined;
+      try {
+        const raw = localStorage.getItem('svl_user');
+        if (raw) institutionId = JSON.parse(raw).institution_id;
+      } catch {}
+
+      const res = await api.post('/licensing/activate', {
+        license_key: licenseKey.trim(),
+        machine_id: machineId,
+        institution_id: institutionId || undefined,
+      });
+      const { expiry, planTier: pt, plan_tier: pt2 } = res.data;
 
       setMode('production');
       setSuccessData({
@@ -43,12 +61,12 @@ export default function SetupWizard() {
           month: 'long',
           day: 'numeric',
         }),
-        planTier: plan_tier,
+        planTier: pt || pt2 || 'standard',
       });
       setCurrentStep('success');
       await refetchLicense();
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || 'Failed to activate license. Please check your key and try again.';
+      const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to activate license. Please check your key and try again.';
       setError(errorMsg);
     } finally {
       setIsChecking(false);

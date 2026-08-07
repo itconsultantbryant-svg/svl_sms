@@ -304,7 +304,7 @@ permissionsRouter.put('/roles/:id', (req: AuthRequest, res: Response) => {
     return;
   }
 
-  if (role.is_system_role) {
+  if (role.is_system_role && req.user?.user_type !== 'platform_admin') {
     res.status(403).json({ error: 'Cannot modify system roles' });
     return;
   }

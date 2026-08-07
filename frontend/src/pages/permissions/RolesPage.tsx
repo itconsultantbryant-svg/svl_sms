@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Shield, Plus, Edit2, Trash2 } from 'lucide-react';
 import api from '../../utils/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Role {
   id: string;
@@ -9,9 +10,18 @@ interface Role {
   description: string;
   permissions: string[];
   user_count?: number;
+  is_system_role?: number;
+  is_platform_role?: number;
+}
+
+interface InstitutionOption {
+  id: string;
+  institution_code: string;
+  institution_name: string;
 }
 
 export default function RolesPage() {
+  const { user } = useAuth();
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -19,15 +29,48 @@ export default function RolesPage() {
   const [systemPermissions, setSystemPermissions] = useState<any>({});
   const [formData, setFormData] = useState({ role_name: '', role_code: '', description: '', permissions: [] as string[] });
 
+  // Institution selector for platform admins
+  const isPlatformAdmin = user?.user_type === 'platform_admin';
+  const [institutions, setInstitutions] = useState<InstitutionOption[]>([]);
+  const [selectedInstitution, setSelectedInstitution] = useState<string>(() => {
+    try {
+      const raw = localStorage.getItem('svl_selected_institution');
+      if (raw) return JSON.parse(raw)?.id || '';
+    } catch {}
+    return '';
+  });
+
+  useEffect(() => {
+    if (isPlatformAdmin) fetchInstitutions();
+  }, [isPlatformAdmin]);
+
   useEffect(() => {
     fetchRoles();
     fetchPermissions();
-  }, []);
+  }, [selectedInstitution]);
+
+  const fetchInstitutions = async () => {
+    try {
+      const res = await api.get('/platform-admin/institutions/list');
+      setInstitutions(res.data || []);
+      // Auto-select first if none selected
+      if (!selectedInstitution && res.data?.length > 0) {
+        setSelectedInstitution(res.data[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load institutions:', error);
+    }
+  };
+
+  const getTenantHeaders = () => {
+    if (!selectedInstitution) return {};
+    return { headers: { 'X-Institution-ID': selectedInstitution } };
+  };
 
   const fetchRoles = async () => {
     try {
-      const response = await api.get('/permissions/roles');
-      setRoles(response.data.roles || response.data || []);
+      const response = await api.get('/permissions/roles', getTenantHeaders());
+      setRoles(response.data.data || []);
     } catch (error) {
       console.error('Failed to fetch roles:', error);
     } finally {
@@ -37,8 +80,8 @@ export default function RolesPage() {
 
   const fetchPermissions = async () => {
     try {
-      const response = await api.get('/permissions/system-permissions');
-      setSystemPermissions(response.data || {});
+      const response = await api.get('/permissions/system-permissions', getTenantHeaders());
+      setSystemPermissions(response.data.permissions || {});
     } catch (error) {
       console.error('Failed to fetch permissions:', error);
     }
@@ -48,24 +91,27 @@ export default function RolesPage() {
     e.preventDefault();
     try {
       if (editingRole) {
-        await api.put(`/permissions/roles/${editingRole.id}`, formData);
+        await api.put(`/permissions/roles/${editingRole.id}`, formData, getTenantHeaders());
       } else {
-        await api.post('/permissions/roles', formData);
+        await api.post('/permissions/roles', formData, getTenantHeaders());
       }
       fetchRoles();
       resetForm();
-    } catch (error) {
-      console.error('Failed to save role:', error);
+    } catch (error: any) {
+      const msg = error.response?.data?.error || 'Failed to save role';
+      console.error('Role save error:', msg);
+      // Show a toast-like alert
+      alert(msg);
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this role?')) return;
     try {
-      await api.delete(`/permissions/roles/${id}`);
+      await api.delete(`/permissions/roles/${id}`, getTenantHeaders());
       fetchRoles();
-    } catch (error) {
-      console.error('Failed to delete role:', error);
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Failed to delete role');
     }
   };
 
@@ -105,14 +151,30 @@ export default function RolesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Roles & Permissions</h1>
           <p className="text-sm text-gray-500 mt-1">Manage user roles and their permissions</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2">
-          <Plus size={16} /> Add Role
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Institution selector for platform admins */}
+          {isPlatformAdmin && institutions.length > 0 && (
+            <select
+              value={selectedInstitution}
+              onChange={(e) => setSelectedInstitution(e.target.value)}
+              className="rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+            >
+              {institutions.map((inst) => (
+                <option key={inst.id} value={inst.id}>
+                  {inst.institution_name}
+                </option>
+              ))}
+            </select>
+          )}
+          <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2">
+            <Plus size={16} /> Add Role
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -138,6 +200,7 @@ export default function RolesPage() {
                   onChange={e => setFormData({ ...formData, role_code: e.target.value })}
                   className="input-field"
                   required
+                  disabled={!!editingRole}
                 />
               </div>
               <div>
@@ -200,6 +263,11 @@ export default function RolesPage() {
                 <td className="py-3 px-4 font-medium flex items-center gap-2">
                   <Shield size={16} className="text-primary-500" />
                   {role.role_name}
+                  {role.is_platform_role ? (
+                    <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">Platform</span>
+                  ) : role.is_system_role ? (
+                    <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">System</span>
+                  ) : null}
                 </td>
                 <td className="py-3 px-4 text-gray-500">{role.role_code}</td>
                 <td className="py-3 px-4 text-gray-500">{role.description || '-'}</td>
@@ -212,9 +280,11 @@ export default function RolesPage() {
                   <button onClick={() => handleEdit(role)} className="text-gray-400 hover:text-blue-600 mr-2">
                     <Edit2 size={16} />
                   </button>
-                  <button onClick={() => handleDelete(role.id)} className="text-gray-400 hover:text-red-600">
-                    <Trash2 size={16} />
-                  </button>
+                  {!role.is_system_role && !role.is_platform_role && (
+                    <button onClick={() => handleDelete(role.id)} className="text-gray-400 hover:text-red-600">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

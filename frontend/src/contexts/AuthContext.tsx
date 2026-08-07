@@ -44,6 +44,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('svl_token', res.data.token);
       localStorage.setItem('svl_user', JSON.stringify(res.data.user));
 
+      // Clear stale license mode so the new user gets a fresh license check
+      localStorage.removeItem('svl_license_mode');
+
       // CRITICAL: Immediately set the auth header for subsequent requests
       api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
 
@@ -54,6 +57,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setUser(res.data.user);
       console.log('✅ Login complete');
+
+      // Notify LicenseContext to re-check
+      window.dispatchEvent(new Event('svl:user-changed'));
     } catch (error) {
       console.error('❌ Login error:', error);
       throw error;
@@ -64,7 +70,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('svl_token');
     localStorage.removeItem('svl_user');
     localStorage.removeItem('svl_selected_institution');
+    localStorage.removeItem('svl_license_mode');
     setUser(null);
+    window.dispatchEvent(new Event('svl:user-changed'));
   };
 
   return (
