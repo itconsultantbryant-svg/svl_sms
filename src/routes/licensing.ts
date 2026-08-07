@@ -333,6 +333,123 @@ licensingRouter.post(
 );
 
 /**
+ * GET /api/licensing/keys
+ * Platform admin: list all license keys
+ */
+licensingRouter.get(
+  '/keys',
+  authenticate,
+  (req: AuthRequest, res: Response): void => {
+    try {
+      if (req.user?.user_type !== 'platform_admin') {
+        res.status(403).json({ error: 'Only platform admins can view license keys' });
+        return;
+      }
+
+      const db = getDatabase();
+      const { search = '', status = '', mode = '' } = req.query as any;
+
+      let where = 'WHERE 1=1';
+      const params: any[] = [];
+
+      if (search) {
+        where += ` AND (
+          l.license_key LIKE ? OR
+          i.institution_name LIKE ? OR
+          i.institution_code LIKE ?
+        )`;
+        const q = `%${search}%`;
+        params.push(q, q, q);
+      }
+
+      if (status) {
+        where += ' AND l.status = ?';
+        params.push(status);
+      }
+
+      if (mode) {
+        where += ' AND l.mode = ?';
+        params.push(mode);
+      }
+
+      const licenses = db
+        .prepare(
+          `
+        SELECT
+          l.id,
+          l.license_key,
+          l.institution_id,
+          l.mode,
+          l.plan_tier,
+          l.expiry_date,
+          l.status,
+          l.machine_fingerprint,
+          l.activated_at,
+          l.created_at,
+          l.updated_at,
+          i.institution_name,
+          i.institution_code,
+          (
+            SELECT COUNT(*) FROM license_activations a WHERE a.license_id = l.id
+          ) as activation_count
+        FROM licenses l
+        LEFT JOIN institutions i ON i.id = l.institution_id
+        ${where}
+        ORDER BY l.created_at DESC
+      `
+        )
+        .all(...params);
+
+      res.json({ data: licenses, total: licenses.length });
+    } catch (error: any) {
+      console.error('List licenses error:', error);
+      res.status(500).json({ error: 'Failed to list licenses', message: error.message });
+    }
+  }
+);
+
+/**
+ * POST /api/licensing/keys/:id/revoke
+ * Platform admin: revoke a license key
+ */
+licensingRouter.post(
+  '/keys/:id/revoke',
+  authenticate,
+  (req: AuthRequest, res: Response): void => {
+    try {
+      if (req.user?.user_type !== 'platform_admin') {
+        res.status(403).json({ error: 'Only platform admins can revoke license keys' });
+        return;
+      }
+
+      const db = getDatabase();
+      const license = db
+        .prepare('SELECT * FROM licenses WHERE id = ?')
+        .get(req.params.id) as any;
+
+      if (!license) {
+        res.status(404).json({ error: 'License not found' });
+        return;
+      }
+
+      const now = new Date().toISOString();
+      db.prepare(
+        `
+        UPDATE licenses
+        SET status = 'revoked', updated_at = ?
+        WHERE id = ?
+      `
+      ).run(now, req.params.id);
+
+      res.json({ success: true, id: req.params.id, status: 'revoked' });
+    } catch (error: any) {
+      console.error('Revoke license error:', error);
+      res.status(500).json({ error: 'Failed to revoke license', message: error.message });
+    }
+  }
+);
+
+/**
  * POST /api/licensing/generate-key
  * Admin endpoint to generate a new license key (for testing/admin only)
  * Requires authentication and admin privileges
@@ -352,9 +469,9 @@ licensingRouter.post(
 
       const {
         institution_id,
-        plan_tier = 'basic',
-        mode = 'demo',
-        expiry_days = 30,
+        plan_tier = 'standard',
+        mode = 'production',
+        expiry_days = 365,
       } = req.body;
 
       if (!institution_id) {
@@ -364,11 +481,24 @@ licensingRouter.post(
         return;
       }
 
+      const allowedTiers = ['free', 'basic', 'standard', 'premium', 'enterprise'];
+      if (!allowedTiers.includes(plan_tier)) {
+        res.status(400).json({
+          error: `Invalid plan_tier. Allowed: ${allowedTiers.join(', ')}`,
+        });
+        return;
+      }
+
+      if (!['demo', 'production'].includes(mode)) {
+        res.status(400).json({ error: 'Invalid mode. Allowed: demo, production' });
+        return;
+      }
+
       const db = getDatabase();
 
       // Verify institution exists
       const institution = db
-        .prepare('SELECT id FROM institutions WHERE id = ?')
+        .prepare('SELECT id, institution_name FROM institutions WHERE id = ?')
         .get(institution_id) as any;
 
       if (!institution) {
@@ -380,16 +510,16 @@ licensingRouter.post(
 
       // Calculate expiry date
       const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + expiry_days);
+      expiryDate.setDate(expiryDate.getDate() + Number(expiry_days || 365));
 
       // Generate the license key
       const licenseKey = generateLicenseKey({
-        institution: institution_id,
+        institution: institution.institution_name || institution_id,
         expiryDate: expiryDate,
         planTier: plan_tier,
       });
 
-      // Save to database
+      // Save to database — active so schools can activate immediately
       const licenseId = `lic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const now = new Date().toISOString();
 
@@ -397,7 +527,7 @@ licensingRouter.post(
         `
         INSERT INTO licenses
         (id, institution_id, license_key, mode, plan_tier, expiry_date, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'inactive', ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
       `
       ).run(
         licenseId,
@@ -411,11 +541,14 @@ licensingRouter.post(
       );
 
       res.json({
+        id: licenseId,
         licenseKey,
         mode,
         planTier: plan_tier,
         expiryDate: expiryDate.toISOString(),
-        daysValid: expiry_days,
+        daysValid: Number(expiry_days || 365),
+        institution_id,
+        institution_name: institution.institution_name,
       });
     } catch (error: any) {
       console.error('License key generation error:', error);

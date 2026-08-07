@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, GraduationCap, UserCircle, Building2,
   BookOpen, Settings, X, ClipboardCheck, Clock, ClipboardList,
   DollarSign, Library, Package, Bus, Award, Briefcase,
-  Send, BarChart3, Shield, CheckSquare,
+  Send, BarChart3, Shield, CheckSquare, KeyRound,
   TrendingUp, UserCheck, BookMarked, Calendar,
   ChevronDown, ChevronRight, Search
 } from 'lucide-react';
@@ -35,9 +35,13 @@ const ALL_NAVIGATION: MenuItem[] = [
   },
   {
     name: 'Platform Admin',
-    href: '/platform-admin',
     icon: Shield,
-    userTypes: ['platform_admin']
+    userTypes: ['platform_admin'],
+    children: [
+      { name: 'Dashboard', href: '/platform-admin' },
+      { name: 'Institutions', href: '/platform-admin/institutions' },
+      { name: 'License Keys', href: '/platform-admin/licenses' },
+    ],
   },
   {
     name: 'Inventory',

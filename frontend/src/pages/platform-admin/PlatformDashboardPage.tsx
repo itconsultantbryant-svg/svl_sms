@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, GraduationCap, UserCircle, Briefcase, Building2, Home } from 'lucide-react';
+import { Users, GraduationCap, UserCircle, Briefcase, Building2, Home, KeyRound } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../utils/api';
 
@@ -112,13 +112,22 @@ export default function PlatformDashboardPage() {
           <Home size={20} className="text-gray-600" />
           <h1 className="text-xl font-bold text-gray-900">All Branch Dashboard</h1>
         </div>
-        <Link
-          to="/platform-admin/institutions"
-          className="flex items-center gap-2 text-sm bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors"
-        >
-          <Building2 size={16} />
-          Manage Institutions
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/platform-admin/licenses"
+            className="flex items-center gap-2 text-sm bg-white text-primary-700 border border-primary-200 px-4 py-2 rounded-lg hover:bg-primary-50 transition-colors"
+          >
+            <KeyRound size={16} />
+            License Keys
+          </Link>
+          <Link
+            to="/platform-admin/institutions"
+            className="flex items-center gap-2 text-sm bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors"
+          >
+            <Building2 size={16} />
+            Manage Institutions
+          </Link>
+        </div>
       </div>
 
       {/* Top Charts Row */}

@@ -38,6 +38,7 @@ import ReportsPage from './pages/reports/ReportsPage';
 import PlatformDashboardPage from './pages/platform-admin/PlatformDashboardPage';
 import InstitutionsPage from './pages/platform-admin/InstitutionsPage';
 import InstitutionFormPage from './pages/platform-admin/InstitutionFormPage';
+import LicensesPage from './pages/platform-admin/LicensesPage';
 import AdmissionDashboard from './pages/admission/AdmissionDashboard';
 import EnquiriesPage from './pages/admission/EnquiriesPage';
 import EnquiryFormPage from './pages/admission/EnquiryFormPage';
@@ -174,6 +175,7 @@ function AppContent() {
                 <Route path="/platform-admin/institutions" element={<InstitutionsPage />} />
                 <Route path="/platform-admin/institutions/new" element={<InstitutionFormPage />} />
                 <Route path="/platform-admin/institutions/:id/edit" element={<InstitutionFormPage />} />
+                <Route path="/platform-admin/licenses" element={<LicensesPage />} />
 
                 {/* Admission */}
                 <Route path="/admission" element={<AdmissionDashboard />} />

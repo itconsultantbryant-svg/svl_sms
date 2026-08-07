@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users, GraduationCap, UserCircle, Building2,
   BookOpen, Settings, X, ClipboardCheck, Clock, ClipboardList,
-  DollarSign, Library, Package, Bus, DoorOpen, Award, Briefcase, Send, BarChart3, Shield
+  DollarSign, Library, Package, Bus, DoorOpen, Award, Briefcase, Send, BarChart3, Shield, KeyRound
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -73,19 +73,34 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
       <nav className="flex-1 py-4 overflow-y-auto">
         {isPlatformAdmin && (
-          <NavLink
-            to="/platform-admin"
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                isActive
-                  ? 'bg-primary-800 text-white border-r-3 border-white'
-                  : 'text-primary-200 hover:bg-primary-800 hover:text-white'
-              }`
-            }
-          >
-            <Shield size={18} />
-            Platform Admin
-          </NavLink>
+          <>
+            <NavLink
+              to="/platform-admin"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                  isActive
+                    ? 'bg-primary-800 text-white border-r-3 border-white'
+                    : 'text-primary-200 hover:bg-primary-800 hover:text-white'
+                }`
+              }
+            >
+              <Shield size={18} />
+              Platform Admin
+            </NavLink>
+            <NavLink
+              to="/platform-admin/licenses"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                  isActive
+                    ? 'bg-primary-800 text-white border-r-3 border-white'
+                    : 'text-primary-200 hover:bg-primary-800 hover:text-white'
+                }`
+              }
+            >
+              <KeyRound size={18} />
+              License Keys
+            </NavLink>
+          </>
         )}
         {navigation.map((item) => (
           <div key={item.name}>
