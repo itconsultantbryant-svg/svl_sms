@@ -42,7 +42,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
           </>
         )}
 
-        <DemoModeIndicator />
+        {user?.user_type !== 'platform_admin' && <DemoModeIndicator />}
         <div className="h-6 w-px bg-gray-200"></div>
 
         {/* Toolbar Icons */}

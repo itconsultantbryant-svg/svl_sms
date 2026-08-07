@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { initializeDatabase } from './database/init';
+import { ensureAdminUser } from './database/ensure-admin';
 import { authRouter } from './routes/auth';
 import { usersRouter } from './routes/users';
 import { branchesRouter } from './routes/branches';
@@ -125,8 +126,9 @@ app.use('/api/admission', authenticate, admissionRouter);
 // Error handler
 app.use(errorHandler);
 
-// Initialize database
+// Initialize database and ensure developer superadmin exists
 initializeDatabase();
+ensureAdminUser();
 
 // Start server
 app.listen(PORT, () => {

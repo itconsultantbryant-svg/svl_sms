@@ -2,70 +2,72 @@ import { getDatabase } from './init';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
+const SUPERADMIN_USERNAME = 'superadmin';
+const SUPERADMIN_PASSWORD = 'SuperAdmin2024!';
+const SUPERADMIN_EMAIL = 'admin@softwarevala.com';
+
+/**
+ * Ensure the developer platform superadmin exists with full access.
+ * Idempotent: creates or updates password/role on every boot.
+ */
 export function ensureAdminUser() {
   const db = getDatabase();
 
   try {
-    // Check if admin user exists
-    const adminUser = db.prepare('SELECT id, username FROM users WHERE username = ?').get('admin') as any;
+    let platformAdminRole = db
+      .prepare("SELECT id FROM roles WHERE role_code = 'platform_admin' LIMIT 1")
+      .get() as any;
 
-    if (adminUser) {
-      console.log('✓ Admin user already exists:', adminUser.username);
+    if (!platformAdminRole) {
+      const roleId = uuidv4();
+      db.prepare(`
+        INSERT INTO roles (
+          id, institution_id, role_code, role_name, description,
+          is_system_role, is_platform_role, role_level, permissions, is_active
+        ) VALUES (?, NULL, 'platform_admin', 'Platform Administrator',
+                  'Full system access across all institutions',
+                  1, 1, 'platform', '[]', 1)
+      `).run(roleId);
+      platformAdminRole = { id: roleId };
+      console.log('✓ Created platform_admin role');
+    }
+
+    const hashedPassword = bcrypt.hashSync(SUPERADMIN_PASSWORD, 10);
+    const existing = db
+      .prepare('SELECT id, username FROM users WHERE username = ?')
+      .get(SUPERADMIN_USERNAME) as any;
+
+    if (existing) {
+      db.prepare(`
+        UPDATE users
+        SET password_hash = ?,
+            email = ?,
+            first_name = 'Platform',
+            last_name = 'Superadmin',
+            role_id = ?,
+            user_type = 'platform_admin',
+            institution_id = NULL,
+            is_active = 1,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(hashedPassword, SUPERADMIN_EMAIL, platformAdminRole.id, existing.id);
+      console.log('✓ Superadmin ensured');
+      console.log(`  Username: ${SUPERADMIN_USERNAME}`);
       return;
     }
 
-    // Get platform_admin role
-    let platformAdminRole = db.prepare("SELECT id FROM roles WHERE code = 'platform_admin'").get() as any;
-
-    if (!platformAdminRole) {
-      console.log('Creating platform_admin role...');
-      const roleId = uuidv4();
-      db.prepare(`
-        INSERT INTO roles (id, code, name, description, level)
-        VALUES (?, 'platform_admin', 'Platform Administrator', 'Full system access across all institutions', 1)
-      `).run(roleId);
-      platformAdminRole = { id: roleId };
-    }
-
-    // Get or create default institution
-    let institution = db.prepare('SELECT id FROM institutions LIMIT 1').get() as any;
-
-    if (!institution) {
-      console.log('Creating default institution...');
-      const instId = uuidv4();
-      db.prepare(`
-        INSERT INTO institutions (id, name, code, email, phone, address, is_active)
-        VALUES (?, 'Victory High School Liberia', 'DEMO001', 'admin@victoryhighschool.lr', '+231777000000', 'Monrovia, Liberia', 1)
-      `).run(instId);
-      institution = { id: instId };
-    }
-
-    // Create admin user
-    console.log('Creating admin user...');
     const userId = uuidv4();
-    const hashedPassword = bcrypt.hashSync('admin123', 10);
-
     db.prepare(`
-      INSERT INTO users (id, username, password, email, first_name, last_name, role_id, user_type, institution_id, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(
-      userId,
-      'admin',
-      hashedPassword,
-      'admin@victoryhighschool.lr',
-      'System',
-      'Administrator',
-      platformAdminRole.id,
-      'platform_admin',
-      institution.id
-    );
+      INSERT INTO users (
+        id, institution_id, branch_id, username, email, password_hash,
+        first_name, last_name, role_id, user_type, is_active, email_verified
+      ) VALUES (?, NULL, NULL, ?, ?, ?, 'Platform', 'Superadmin', ?, 'platform_admin', 1, 1)
+    `).run(userId, SUPERADMIN_USERNAME, SUPERADMIN_EMAIL, hashedPassword, platformAdminRole.id);
 
-    console.log('✓ Admin user created successfully');
-    console.log('  Username: admin');
-    console.log('  Password: admin123');
-    console.log('  Email: admin@victoryhighschool.lr');
-
+    console.log('✓ Superadmin user created');
+    console.log(`  Username: ${SUPERADMIN_USERNAME}`);
+    console.log('  Password: SuperAdmin2024!');
   } catch (error) {
-    console.error('Error ensuring admin user:', error);
+    console.error('Error ensuring superadmin user:', error);
   }
 }

@@ -65,8 +65,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function isPlatformAdminUser(): boolean {
+  try {
+    const raw = localStorage.getItem('svl_user');
+    if (!raw) return false;
+    const u = JSON.parse(raw);
+    return u?.user_type === 'platform_admin';
+  } catch {
+    return false;
+  }
+}
+
 function AppContent() {
+  const { user } = useAuth();
   const { mode, isLoading } = useLicense();
+  const isPlatformAdmin = user?.user_type === 'platform_admin' || isPlatformAdminUser();
 
   return (
     <Routes>
@@ -75,14 +88,14 @@ function AppContent() {
         path="/*"
         element={
           <ProtectedRoute>
-            {!mode && !localStorage.getItem('svl_license_mode') && !isLoading ? (
+            {!isPlatformAdmin && !mode && !localStorage.getItem('svl_license_mode') && !isLoading ? (
               <SetupWizard />
             ) : (
               <>
-                <DemoModeWatermark />
+                {!isPlatformAdmin && <DemoModeWatermark />}
                 <MainLayout>
                   <Routes>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/" element={<Navigate to={isPlatformAdmin ? '/platform-admin' : '/dashboard'} replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
 
                 {/* Students */}

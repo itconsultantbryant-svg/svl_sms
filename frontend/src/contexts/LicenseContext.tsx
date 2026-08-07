@@ -87,6 +87,26 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    // Platform superadmin is never gated by school license modes
+    try {
+      const raw = localStorage.getItem('svl_user');
+      if (raw) {
+        const u = JSON.parse(raw);
+        if (u?.user_type === 'platform_admin') {
+          setModeState('production');
+          setPlanTier('enterprise');
+          setFeatures(DEFAULT_PRODUCTION_FEATURES);
+          setExpiry(null);
+          setDaysRemaining(null);
+          setIsExpired(false);
+          setIsLoading(false);
+          return;
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+
     // Check if user has explicitly chosen a mode
     const savedMode = localStorage.getItem('svl_license_mode') as 'demo' | 'production' | null;
     if (savedMode) {

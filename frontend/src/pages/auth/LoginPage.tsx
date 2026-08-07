@@ -10,7 +10,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  if (user) return <Navigate to="/dashboard" replace />;
+  const homePath = user?.user_type === 'platform_admin' ? '/platform-admin' : '/dashboard';
+
+  if (user) return <Navigate to={homePath} replace />;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -21,7 +23,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(username, password);
-      navigate('/dashboard');
+      // login() persists the user to localStorage — read it to route superadmin correctly
+      const stored = JSON.parse(localStorage.getItem('svl_user') || '{}');
+      navigate(stored?.user_type === 'platform_admin' ? '/platform-admin' : '/dashboard');
       toast.success('Welcome back!');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Login failed');

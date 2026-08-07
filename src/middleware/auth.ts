@@ -69,6 +69,17 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
       return;
     }
 
+    // Platform superadmin manages the whole system — never gated by school licenses
+    if (user.user_type === 'platform_admin') {
+      user.license_mode = 'production';
+      user.license_tier = 'enterprise';
+      user.days_remaining = null;
+      req.user = user;
+      console.log('✅ Auth successful (platform admin):', user.username);
+      next();
+      return;
+    }
+
     // Check license status after user is authenticated
     const license = db
       .prepare(
@@ -113,18 +124,12 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
         }
       }
     } else {
-      // No license found - might be okay for platform admins, but block others
-      if (
-        user.user_type !== 'platform_admin' &&
-        user.institution_id !== 'platform'
-      ) {
-        console.log('❌ No license found for institution');
-        res.status(403).json({
-          error: 'License required',
-          redirect: '/setup',
-        });
-        return;
-      }
+      console.log('❌ No license found for institution');
+      res.status(403).json({
+        error: 'License required',
+        redirect: '/setup',
+      });
+      return;
     }
 
     req.user = user;
