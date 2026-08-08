@@ -9,6 +9,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        # Pin to Node 24: better-sqlite3@13 ships prebuilt binaries for the
+        # Node 24 ABI. On Node 20 the module segfaults at startup.
+        value: 24
       - key: PORT
         value: 10000
       - key: DB_PATH
