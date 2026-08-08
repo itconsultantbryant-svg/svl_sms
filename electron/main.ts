@@ -101,6 +101,10 @@ async function spawnBackend(): Promise<number> {
     env.PORT = port.toString();
     env.CORS_ORIGINS = 'http://localhost:*,app://localhost,file://*';
     env.DB_PATH = path.join(app.getPath('userData'), 'svl-sms.db');
+    // Marks this backend as the desktop/offline build. /api/licensing/activate
+    // only auto-creates licenses for unknown keys when this is set, so the
+    // online deployment keeps rejecting unknown keys (see src/routes/licensing.ts).
+    env.ELECTRON_MODE = 'true';
 
     let command: string;
     let args: string[];

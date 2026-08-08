@@ -24,11 +24,13 @@ function run(cmd) {
   });
 }
 
-function assertNode20() {
+// better-sqlite3@13 ships prebuilt binaries for Node 20+ (including Node 24),
+// so any modern Node works for building the desktop app.
+function assertNodeSupported() {
   const major = Number(process.versions.node.split('.')[0]);
-  if (major !== 20) {
+  if (major < 20) {
     console.error(
-      `\nERROR: Node ${process.versions.node} detected. This project requires Node 20.x\n` +
+      `\nERROR: Node ${process.versions.node} detected. This project requires Node 20 or newer\n` +
         '  nvm install 20 && nvm use 20\n' +
         '  Then delete node_modules and run: npm install\n'
     );
@@ -44,7 +46,7 @@ function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-assertNode20();
+assertNodeSupported();
 console.log('==> Preparing Electron distribution layout (Node', process.versions.node + ')');
 
 const distDir = path.join(root, 'dist');

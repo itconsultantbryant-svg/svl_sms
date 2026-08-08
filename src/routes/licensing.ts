@@ -129,7 +129,7 @@ licensingRouter.post('/activate', (req: AuthRequest, res: Response): void => {
     let offlineActivated = false;
     if (!license) {
       // Desktop-only path. The Electron backend is spawned with
-      // ELECTRON_MODE=true (scripts/start-electron-backend.js); the online
+      // ELECTRON_MODE=true (electron/main.ts spawnBackend); the online
       // deployment never sets it. On the web, an unknown key must keep
       // returning 404 so platform-admin-issued keys remain the only way to
       // license a school.
