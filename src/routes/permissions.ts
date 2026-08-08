@@ -314,8 +314,7 @@ permissionsRouter.put('/roles/:id', (req: AuthRequest, res: Response) => {
       UPDATE roles SET
         role_name = COALESCE(?, role_name),
         description = COALESCE(?, description),
-        permissions = COALESCE(?, permissions),
-        updated_at = datetime('now')
+        permissions = COALESCE(?, permissions)
       WHERE id = ?
     `).run(
       role_name,
