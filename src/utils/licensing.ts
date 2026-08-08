@@ -64,8 +64,11 @@ export function generateLicenseKey(config: {
   // Sign the data
   const signature = signKey(data);
 
-  // Generate a random key ID
-  const keyId = crypto.randomBytes(4).toString('hex').toUpperCase();
+  // Generate a random key ID — 2 bytes = 4 hex chars so the emitted key
+  // matches the documented SVL-XXXX-XXXX-XXXX-XXXX format (validated by
+  // validateLicenseKey). Earlier builds used a 4-byte id (8 hex chars), so
+  // the validator also accepts that trailing length for backward compat.
+  const keyId = crypto.randomBytes(2).toString('hex').toUpperCase();
 
   // Return formatted license key: SVL-{signature}-{keyId}
   const signatureShort = signature.substring(0, 32).toUpperCase();
@@ -113,8 +116,9 @@ export function validateLicenseKey(key: string): {
   machineId?: string;
   keyId?: string;
 } {
-  // Check format: SVL-XXXX-XXXX-XXXX-XXXX
-  const keyRegex = /^SVL-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/i;
+  // Check format: SVL-XXXX-XXXX-XXXX-XXXX (last group may be 8 hex chars for
+  // keys issued by earlier builds that used a 4-byte key id).
+  const keyRegex = /^SVL-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4,8}$/i;
 
   if (!keyRegex.test(key)) {
     return { valid: false };
