@@ -12,6 +12,73 @@ import {
 export const licensingRouter = Router();
 
 /**
+ * GET /api/licensing/status
+ * Backend/desktop license status — no auth required.
+ * The Electron main process calls this for the get-license-status IPC.
+ * Optional scoping: X-Institution-ID header or ?institution_id= query.
+ */
+licensingRouter.get('/status', (req: AuthRequest, res: Response): void => {
+  try {
+    const db = getDatabase();
+    const institution_id =
+      (req.query.institution_id as string) ||
+      (typeof req.headers['x-institution-id'] === 'string'
+        ? (req.headers['x-institution-id'] as string)
+        : undefined);
+
+    // Institution-scoped status (most useful for a logged-in school)
+    if (institution_id) {
+      const license = db
+        .prepare(
+          `
+          SELECT * FROM licenses
+          WHERE institution_id = ? AND status = 'active'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `
+        )
+        .get(institution_id) as any;
+
+      if (!license) {
+        res.json({ status: 'unlicensed', message: 'No active license for this institution' });
+        return;
+      }
+
+      const expiryDate = new Date(license.expiry_date);
+      const expired = isExpired(expiryDate);
+      const daysRemaining = getDaysRemaining(expiryDate);
+
+      res.json({
+        status: expired ? 'expired' : 'active',
+        message: expired ? 'License has expired' : 'License is active',
+        mode: license.mode,
+        planTier: license.plan_tier,
+        expiry: license.expiry_date,
+        expiresAt: license.expiry_date,
+        daysRemaining: expired ? 0 : daysRemaining,
+        licenseId: license.id,
+      });
+      return;
+    }
+
+    // Global summary — the backend itself is reachable
+    const active = db
+      .prepare(`SELECT COUNT(*) as count FROM licenses WHERE status = 'active'`)
+      .get() as any;
+
+    res.json({
+      status: 'online',
+      message: 'Backend is online',
+      licensed: active.count > 0,
+      totalActiveLicenses: active.count,
+    });
+  } catch (error: any) {
+    console.error('License status error:', error);
+    res.status(500).json({ error: 'Status check failed', message: error.message });
+  }
+});
+
+/**
  * POST /api/licensing/activate
  * Activate a license on a specific machine
  * No authentication required for initial activation
@@ -43,8 +110,8 @@ licensingRouter.post('/activate', (req: AuthRequest, res: Response): void => {
       return;
     }
 
-    // Look up the license
-    const license = db
+    // Look up the license locally first.
+    let license = db
       .prepare(
         `
       SELECT * FROM licenses
@@ -53,11 +120,71 @@ licensingRouter.post('/activate', (req: AuthRequest, res: Response): void => {
       )
       .get(license_key) as any;
 
+    // Offline auto-activation: a key issued elsewhere (online platform admin or
+    // the CLI tool) is not in the local desktop database. The key format is
+    // validated above; if it isn't in the local DB, create a local production
+    // license on the fly so the desktop can activate and run offline — the
+    // documented offline-first behavior (see LICENSING_COMPLETE_GUIDE.md).
+    // Online check-ins can reconcile against the server in a future release.
+    let offlineActivated = false;
     if (!license) {
-      res.status(404).json({
-        error: 'License not found or invalid',
+      // Desktop-only path. The Electron backend is spawned with
+      // ELECTRON_MODE=true (scripts/start-electron-backend.js); the online
+      // deployment never sets it. On the web, an unknown key must keep
+      // returning 404 so platform-admin-issued keys remain the only way to
+      // license a school.
+      if (process.env.ELECTRON_MODE !== 'true') {
+        res.status(404).json({ error: 'License not found' });
+        return;
+      }
+
+      if (!institution_id) {
+        res.status(400).json({
+          error: 'institution_id is required to activate an offline license',
+        });
+        return;
+      }
+
+      // Verify the institution exists (licenses.institution_id is a NOT NULL FK)
+      const institution = db
+        .prepare('SELECT id FROM institutions WHERE id = ?')
+        .get(institution_id) as any;
+
+      if (!institution) {
+        res.status(404).json({ error: 'Institution not found' });
+        return;
+      }
+
+      const offlineLicenseId = `lic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const now = new Date().toISOString();
+      const offlineExpiry = new Date();
+      offlineExpiry.setDate(offlineExpiry.getDate() + 365);
+
+      db.prepare(
+        `
+        INSERT INTO licenses
+        (id, institution_id, license_key, mode, plan_tier, expiry_date, status, created_at, updated_at)
+        VALUES (?, ?, ?, 'production', 'standard', ?, 'active', ?, ?)
+      `
+      ).run(
+        offlineLicenseId,
+        institution_id,
+        license_key,
+        offlineExpiry.toISOString(),
+        now,
+        now
+      );
+
+      license = db
+        .prepare('SELECT * FROM licenses WHERE id = ?')
+        .get(offlineLicenseId) as any;
+      offlineActivated = true;
+
+      console.log('💾 Offline activation: key not in local DB — created local license', {
+        licenseId: offlineLicenseId,
+        institution_id,
+        expiry: offlineExpiry.toISOString(),
       });
-      return;
     }
 
     // Check if license is expired
@@ -163,6 +290,7 @@ licensingRouter.post('/activate', (req: AuthRequest, res: Response): void => {
       daysRemaining: getDaysRemaining(expiryDate),
       machineId: machine_id,
       licenseId: license.id,
+      offlineActivated,
     });
   } catch (error: any) {
     console.error('License activation error:', error);
@@ -306,17 +434,48 @@ licensingRouter.post(
         return;
       }
 
-      // Update last check-in
+      // Update last check-in. Self-heal: if this machine has no activation row
+      // yet (e.g. a license auto-created offline on another machine), create
+      // one instead of silently no-op'ing the UPDATE.
       const now = new Date().toISOString();
       const ipAddress = req.ip || 'unknown';
 
-      db.prepare(
+      const existingActivation = db
+        .prepare(
+          `
+          SELECT id FROM license_activations
+          WHERE license_id = ? AND machine_id = ?
         `
-        UPDATE license_activations
-        SET last_check_in = ?, ip_address = ?, updated_at = ?
-        WHERE license_id = ? AND machine_id = ?
-      `
-      ).run(now, ipAddress, now, license.id, machine_id);
+        )
+        .get(license.id, machine_id) as any;
+
+      if (existingActivation) {
+        db.prepare(
+          `
+          UPDATE license_activations
+          SET last_check_in = ?, ip_address = ?, updated_at = ?
+          WHERE license_id = ? AND machine_id = ?
+        `
+        ).run(now, ipAddress, now, license.id, machine_id);
+      } else {
+        db.prepare(
+          `
+          INSERT INTO license_activations
+          (id, institution_id, license_id, machine_id, activated_at, last_check_in, ip_address, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `
+        ).run(
+          `la_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          institutionId,
+          license.id,
+          machine_id,
+          now,
+          now,
+          ipAddress,
+          now,
+          now
+        );
+      }
 
       res.json({
         valid: true,

@@ -26,30 +26,30 @@
     "electron-dist": "electron-builder"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "better-sqlite3": "^9.2.2",
-    "jsonwebtoken": "^9.0.2",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^20.10.6",
+    "@types/uuid": "^9.0.7",
     "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "uuid": "^9.0.1",
     "electron-is-dev": "^2.0.0",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
     "typescript": "^5.5.4",
-    "@types/express": "^4.17.21",
-    "@types/better-sqlite3": "^7.6.8",
-    "@types/jsonwebtoken": "^9.0.5",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cors": "^2.8.17",
-    "@types/node": "^20.10.6",
-    "@types/uuid": "^9.0.7"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "tsx": "^4.7.0",
+    "archiver": "^7.0.1",
+    "concurrently": "^8.2.2",
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3",
-    "concurrently": "^8.2.2",
-    "wait-on": "^7.2.0",
-    "archiver": "^7.0.1"
+    "tsx": "^4.7.0",
+    "wait-on": "^7.2.0"
   },
   "engines": {
     "node": "20.x"
