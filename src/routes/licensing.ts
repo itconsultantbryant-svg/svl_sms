@@ -2,12 +2,11 @@ import { Router, Response } from 'express';
 import { AuthRequest, authenticate } from '../middleware/auth';
 import { getDatabase } from '../database/init';
 import {
-  generateLicenseKey,
   validateLicenseKey,
-  generateMachineFingerprint,
   getDaysRemaining,
   isExpired,
 } from '../utils/licensing';
+import { issueLicenseKey } from '../utils/license-issuer';
 
 export const licensingRouter = Router();
 
@@ -138,39 +137,65 @@ licensingRouter.post('/activate', (req: AuthRequest, res: Response): void => {
         return;
       }
 
-      if (!institution_id) {
-        res.status(400).json({
-          error: 'institution_id is required to activate an offline license',
-        });
-        return;
-      }
+      // First-run offline activation: a fresh desktop install has no logged-in
+      // user and no institution row yet, so the school can't supply an
+      // institution_id. Auto-create a default offline institution to bind the
+      // license to a real tenant (licenses.institution_id is a NOT NULL FK).
+      // The frontend persists the returned institution_id for later calls.
+      let resolvedInstitutionId = institution_id;
 
-      // Verify the institution exists (licenses.institution_id is a NOT NULL FK)
-      const institution = db
-        .prepare('SELECT id FROM institutions WHERE id = ?')
-        .get(institution_id) as any;
+      if (!resolvedInstitutionId) {
+        const existing = db
+          .prepare("SELECT id FROM institutions WHERE institution_code = 'OFFLINE' LIMIT 1")
+          .get() as any;
+        if (existing) {
+          resolvedInstitutionId = existing.id;
+        } else {
+          const { v4: uuidv4 } = require('uuid');
+          const newInstId = uuidv4();
+          db.prepare(
+            `
+            INSERT INTO institutions
+            (id, institution_code, institution_name, institution_type, country, currency, currency_symbol, setup_completed)
+            VALUES (?, 'OFFLINE', 'Offline School', 'other', 'Liberia', 'USD', '$', 1)
+          `
+          ).run(newInstId);
+          resolvedInstitutionId = newInstId;
+          console.log('💾 Offline activation: created default OFFLINE institution', newInstId);
+        }
+      } else {
+        // Verify the institution exists (licenses.institution_id is a NOT NULL FK)
+        const institution = db
+          .prepare('SELECT id FROM institutions WHERE id = ?')
+          .get(resolvedInstitutionId) as any;
 
-      if (!institution) {
-        res.status(404).json({ error: 'Institution not found' });
-        return;
+        if (!institution) {
+          res.status(404).json({ error: 'Institution not found' });
+          return;
+        }
       }
 
       const offlineLicenseId = `lic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const now = new Date().toISOString();
-      const offlineExpiry = new Date();
-      offlineExpiry.setDate(offlineExpiry.getDate() + 365);
+
+      // Honor the SIGNED key's plan tier and expiry. validateLicenseKey already
+      // verified the signature, so validation.expiry / planTier are trustworthy.
+      const offlineExpiry = validation.expiry || new Date(Date.now() + 365 * 86400000);
+      const offlineTier = validation.planTier || 'standard';
 
       db.prepare(
         `
         INSERT INTO licenses
-        (id, institution_id, license_key, mode, plan_tier, expiry_date, status, created_at, updated_at)
-        VALUES (?, ?, ?, 'production', 'standard', ?, 'active', ?, ?)
+        (id, institution_id, license_key, mode, plan_tier, expiry_date, status, machine_fingerprint, created_at, updated_at)
+        VALUES (?, ?, ?, 'production', ?, ?, 'active', ?, ?, ?)
       `
       ).run(
         offlineLicenseId,
-        institution_id,
+        resolvedInstitutionId,
         license_key,
+        offlineTier,
         offlineExpiry.toISOString(),
+        machine_id,
         now,
         now
       );
@@ -182,7 +207,8 @@ licensingRouter.post('/activate', (req: AuthRequest, res: Response): void => {
 
       console.log('💾 Offline activation: key not in local DB — created local license', {
         licenseId: offlineLicenseId,
-        institution_id,
+        institution_id: resolvedInstitutionId,
+        planTier: offlineTier,
         expiry: offlineExpiry.toISOString(),
       });
     }
@@ -290,6 +316,7 @@ licensingRouter.post('/activate', (req: AuthRequest, res: Response): void => {
       daysRemaining: getDaysRemaining(expiryDate),
       machineId: machine_id,
       licenseId: license.id,
+      institutionId: license.institution_id,
       offlineActivated,
     });
   } catch (error: any) {
@@ -571,6 +598,127 @@ licensingRouter.get(
   }
 );
 
+// Activations older than this without a check-in are considered "never reported"
+// (activated fully offline and have not yet phoned home).
+const OFFLINE_STALE_DAYS = 30;
+
+/**
+ * GET /api/licensing/activations
+ * Platform admin: list every license key with its machine-level activations.
+ * This is the superadmin monitoring view — which schools/machines activated,
+ * when, their last check-in, and whether they've reconciled with the server.
+ */
+licensingRouter.get(
+  '/activations',
+  authenticate,
+  (req: AuthRequest, res: Response): void => {
+    try {
+      if (req.user?.user_type !== 'platform_admin') {
+        res.status(403).json({ error: 'Only platform admins can view activations' });
+        return;
+      }
+
+      const db = getDatabase();
+      const { search = '', status = '' } = req.query as any;
+
+      let where = 'WHERE 1=1';
+      const params: any[] = [];
+      if (search) {
+        where += ` AND (
+          l.license_key LIKE ? OR
+          i.institution_name LIKE ? OR
+          i.institution_code LIKE ? OR
+          a.machine_id LIKE ?
+        )`;
+        const q = `%${search}%`;
+        params.push(q, q, q, q);
+      }
+      if (status) {
+        where += ' AND l.status = ?';
+        params.push(status);
+      }
+
+      const rows = db
+        .prepare(
+          `
+        SELECT
+          l.id               AS license_id,
+          l.license_key,
+          l.mode,
+          l.plan_tier,
+          l.expiry_date,
+          l.status           AS license_status,
+          l.activated_at    AS license_activated_at,
+          l.created_at       AS license_created_at,
+          i.id               AS institution_id,
+          i.institution_name,
+          i.institution_code,
+          a.id               AS activation_id,
+          a.machine_id,
+          a.activated_at,
+          a.last_check_in,
+          a.ip_address,
+          CASE
+            WHEN a.last_check_in IS NULL
+                 AND a.activated_at < datetime('now', '-' || ? || ' days')
+              THEN 1
+            ELSE 0
+          END AS never_reported
+        FROM licenses l
+        LEFT JOIN institutions i ON i.id = l.institution_id
+        LEFT JOIN license_activations a ON a.license_id = l.id
+        ${where}
+        ORDER BY l.created_at DESC, a.activated_at DESC
+      `
+        )
+        .all(OFFLINE_STALE_DAYS, ...params) as any[];
+
+      // Group activations under their license key.
+      const byKey = new Map<string, any>();
+      let totalMachines = 0;
+      for (const row of rows) {
+        if (!byKey.has(row.license_id)) {
+          byKey.set(row.license_id, {
+            licenseId: row.license_id,
+            licenseKey: row.license_key,
+            mode: row.mode,
+            planTier: row.plan_tier,
+            expiryDate: row.expiry_date,
+            licenseStatus: row.license_status,
+            institutionId: row.institution_id,
+            institutionName: row.institution_name,
+            institutionCode: row.institution_code,
+            activations: [],
+          });
+        }
+        const entry = byKey.get(row.license_id);
+        if (row.activation_id) {
+          totalMachines++;
+          entry.activations.push({
+            activationId: row.activation_id,
+            machineId: row.machine_id,
+            activatedAt: row.activated_at,
+            lastCheckIn: row.last_check_in,
+            ipAddress: row.ip_address,
+            neverReported: !!row.never_reported,
+          });
+        }
+      }
+
+      const data = Array.from(byKey.values());
+      res.json({
+        data,
+        total: data.length,
+        totalMachines,
+        staleDays: OFFLINE_STALE_DAYS,
+      });
+    } catch (error: any) {
+      console.error('List activations error:', error);
+      res.status(500).json({ error: 'Failed to list activations', message: error.message });
+    }
+  }
+);
+
 /**
  * POST /api/licensing/keys/:id/revoke
  * Platform admin: revoke a license key
@@ -675,11 +823,10 @@ licensingRouter.post(
       const expiryDate = new Date();
       expiryDate.setDate(expiryDate.getDate() + Number(expiry_days || 365));
 
-      // Generate the license key
-      const licenseKey = generateLicenseKey({
-        institution: institution.institution_name || institution_id,
-        expiryDate: expiryDate,
+      // Issue a cryptographically signed key (server-side private key).
+      const issued = issueLicenseKey({
         planTier: plan_tier,
+        expiryDays: Number(expiry_days || 365),
       });
 
       // Save to database — active so schools can activate immediately
@@ -695,17 +842,17 @@ licensingRouter.post(
       ).run(
         licenseId,
         institution_id,
-        licenseKey,
+        issued.key,
         mode,
         plan_tier,
-        expiryDate.toISOString(),
+        issued.expiry.toISOString(),
         now,
         now
       );
 
       res.json({
         id: licenseId,
-        licenseKey,
+        licenseKey: issued.key,
         mode,
         planTier: plan_tier,
         expiryDate: expiryDate.toISOString(),

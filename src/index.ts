@@ -130,11 +130,16 @@ app.use(errorHandler);
 initializeDatabase();
 ensureAdminUser();
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`SVL-SMS Backend running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`CORS Origins: ${allowedOrigins.join(', ')}`);
-});
+// Start server. Inside Electron (packaged build), electron/main.ts imports this
+// module and calls app.listen() itself so the backend runs IN the Electron main
+// process (no separate Node.exe needed). Guard the auto-listen so merely
+// requiring the module does not spawn a second server.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`SVL-SMS Backend running on port ${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`CORS Origins: ${allowedOrigins.join(', ')}`);
+  });
+}
 
 export default app;

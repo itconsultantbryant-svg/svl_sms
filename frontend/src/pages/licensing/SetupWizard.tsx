@@ -52,7 +52,26 @@ export default function SetupWizard() {
         machine_id: machineId,
         institution_id: institutionId || undefined,
       });
-      const { expiry, planTier: pt, plan_tier: pt2 } = res.data;
+      const { expiry, planTier: pt, plan_tier: pt2, institutionId: returnedInstitutionId } = res.data;
+
+      // Offline-first activation: the backend may create the institution on the
+      // fly and return it. Persist it so authenticated calls (which read
+      // svl_user.institution_id) resolve to the right tenant.
+      if (returnedInstitutionId) {
+        try {
+          const raw = localStorage.getItem('svl_user');
+          if (raw) {
+            const u = JSON.parse(raw);
+            u.institution_id = returnedInstitutionId;
+            localStorage.setItem('svl_user', JSON.stringify(u));
+          } else {
+            localStorage.setItem(
+              'svl_offline_institution_id',
+              returnedInstitutionId
+            );
+          }
+        } catch {}
+      }
 
       setMode('production');
       setSuccessData({

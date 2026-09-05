@@ -1,30 +1,63 @@
-import { useState, useEffect, FormEvent } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { Institution } from '../../types';
+import { useBrand } from '../../contexts/BrandContext';
 
 export default function SettingsPage() {
+  const queryClient = useQueryClient();
+  const { refreshBranding } = useBrand();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<Partial<Institution>>({
-    name: '', code: '', mobile: '', address: '', email: '',
-    website: '', country: 'Liberia', currency: 'USD',
-    currency_symbol: '$', timezone: 'Africa/Monrovia', motto: '',
+    institution_name: '',
+    institution_code: '',
+    mobile: '',
+    address: '',
+    email: '',
+    website: '',
+    country: 'Liberia',
+    currency: 'USD',
+    currency_symbol: '$',
+    timezone: 'Africa/Monrovia',
+    motto: '',
+    logo: '',
+    primary_color: '#1e40af',
+    secondary_color: '#3b82f6',
+    accent_color: '#f59e0b',
   });
 
   const { data: institution } = useQuery<Institution>({
     queryKey: ['institution'],
-    queryFn: () => api.get('/settings/institution').then(r => r.data),
+    queryFn: () => api.get('/settings/institution').then((r) => r.data),
   });
 
   useEffect(() => {
     if (institution && institution.id) {
-      setForm(institution);
+      setForm({
+        ...institution,
+        institution_name: institution.institution_name || (institution as any).name,
+        institution_code: institution.institution_code || (institution as any).code,
+      });
     }
   }, [institution]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleLogoUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Logo must be under 2MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((prev) => ({ ...prev, logo: String(reader.result) }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -32,6 +65,8 @@ export default function SettingsPage() {
     setLoading(true);
     try {
       await api.put('/settings/institution', form);
+      await queryClient.invalidateQueries({ queryKey: ['institution'] });
+      await refreshBranding();
       toast.success('Settings saved successfully');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to save settings');
@@ -44,20 +79,59 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-sm text-gray-500 mt-1">Institution and system settings</p>
+        <p className="text-sm text-gray-500 mt-1">Institution branding and system settings</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="card">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Branding</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2 flex items-center gap-4">
+              {form.logo ? (
+                <img src={form.logo} alt="Logo" className="h-16 w-16 object-contain rounded border" />
+              ) : (
+                <div
+                  className="h-16 w-16 rounded flex items-center justify-center text-white font-bold"
+                  style={{ backgroundColor: form.primary_color || '#1e40af' }}
+                >
+                  {(form.institution_name || 'S').charAt(0)}
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">School Logo</label>
+                <input type="file" accept="image/*" onChange={handleLogoUpload} className="text-sm" />
+                <p className="text-xs text-gray-400 mt-1">PNG/JPG up to 2MB. Colors below theme the portal.</p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Primary Color</label>
+              <input type="color" name="primary_color" value={form.primary_color || '#1e40af'} onChange={handleChange} className="h-10 w-full rounded border" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Secondary Color</label>
+              <input type="color" name="secondary_color" value={form.secondary_color || '#3b82f6'} onChange={handleChange} className="h-10 w-full rounded border" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Accent Color</label>
+              <input type="color" name="accent_color" value={form.accent_color || '#f59e0b'} onChange={handleChange} className="h-10 w-full rounded border" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+              <input name="website" value={form.website || ''} onChange={handleChange} className="input-field" placeholder="https://school.edu.lr" />
+            </div>
+          </div>
+        </div>
+
         <div className="card">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Institution Information</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Institution Name</label>
-              <input name="name" value={form.name || ''} onChange={handleChange} className="input-field" />
+              <input name="institution_name" value={form.institution_name || ''} onChange={handleChange} className="input-field" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Institution Code</label>
-              <input name="code" value={form.code || ''} onChange={handleChange} className="input-field" />
+              <input name="institution_code" value={form.institution_code || ''} onChange={handleChange} className="input-field" disabled />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -66,14 +140,6 @@ export default function SettingsPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Phone/Mobile</label>
               <input name="mobile" value={form.mobile || ''} onChange={handleChange} className="input-field" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
-              <input name="website" value={form.website || ''} onChange={handleChange} className="input-field" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
-              <input name="country" value={form.country || ''} onChange={handleChange} className="input-field" />
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>

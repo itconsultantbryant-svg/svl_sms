@@ -206,6 +206,36 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     await fetchLicense();
   };
 
+  // Periodic license check-in. On the desktop/offline build this reconciles a
+  // locally-activated license with the server (populating the superadmin
+  // activation dashboard) whenever the machine has connectivity. Failures are
+  // silent — the app stays fully functional offline.
+  useEffect(() => {
+    const CHECKIN_INTERVAL_MS = 24 * 60 * 60 * 1000; // once per day
+
+    const checkIn = async () => {
+      try {
+        const token = localStorage.getItem('svl_token');
+        if (!token) return;
+        let machineId = localStorage.getItem('svl_machine_id');
+        if (!machineId) {
+          machineId = 'web-' + crypto.randomUUID();
+          localStorage.setItem('svl_machine_id', machineId);
+        }
+        await api.post('/licensing/check-in', { machine_id: machineId });
+      } catch {
+        // offline or server unreachable — ignore
+      }
+    };
+
+    const timer = setInterval(checkIn, CHECKIN_INTERVAL_MS);
+    // Fire one shortly after mount if already logged in
+    const token = localStorage.getItem('svl_token');
+    if (token) setTimeout(checkIn, 5000);
+
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <LicenseContext.Provider
       value={{

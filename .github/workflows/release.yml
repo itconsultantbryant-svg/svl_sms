@@ -1,0 +1,39 @@
+name: Release Build (Windows + macOS)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows Setup + ZIP
+    uses: ./.github/workflows/build-windows.yml
+    secrets: inherit
+
+  macos:
+    name: macOS DMG + ZIP
+    uses: ./.github/workflows/build-macos.yml
+    secrets: inherit
+
+  # Optional: only succeed if BOTH platforms build (fail fast on any)
+  release:
+    name: Verify both platform artifacts
+    runs-on: ubuntu-latest
+    needs: [windows, macos]
+    if: always()
+    steps:
+      - name: Check platform builds succeeded
+        run: |
+          if [ "${{ needs.windows.result }}" != "success" ]; then
+            echo "::error ::Windows build failed"
+            exit 1
+          fi
+          if [ "${{ needs.macos.result }}" != "success" ]; then
+            echo "::error ::macOS build failed"
+            exit 1
+          fi
+          echo "Both platform builds succeeded"

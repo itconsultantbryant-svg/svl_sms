@@ -40,6 +40,13 @@ win:
       arch:
         - x64
   artifactName: SVL-SMS-Setup-${version}.${ext}
+  # Code signing (optional but required for distribution without SmartScreen warnings).
+  # Set CSC_LINK (base64-encoded .pfx or path) and CSC_KEY_PASSWORD in CI secrets.
+  # If not set, electron-builder skips signing and produces an unsigned installer.
+  # Using env var substitution that falls back to empty string if not set.
+  certificateFile: ${env.CSC_LINK}
+  certificatePassword: ${env.CSC_KEY_PASSWORD}
+  publisherName: ${env.CSC_NAME}
 
 nsis:
   oneClick: false
@@ -50,7 +57,7 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: SVL-SMS
   installerLanguages:
-    - English
+    - en_US
   deleteAppDataOnUninstall: false
   artifactName: SVL-SMS-Setup-${version}.${ext}
 
@@ -61,6 +68,12 @@ mac:
   category: public.app-category.business
   entitlements: electron/entitlements.mac.plist
   entitlementsInherit: electron/entitlements.mac.plist
+  # Code signing + notarization (optional but required for Gatekeeper approval).
+  # Set APPLE_ID, APPLE_ID_PASS (app-specific password), and APPLE_TEAM_ID in CI secrets.
+  # If not set, electron-builder skips signing/notarization.
+  identity: ${env.CSC_NAME}  # "Developer ID Application: Your Name (TEAM_ID)"
+  hardenedRuntime: true
+  gatekeeperAssess: true
 
 dmg:
   title: Install ${productName}

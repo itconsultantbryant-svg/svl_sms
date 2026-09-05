@@ -10,10 +10,17 @@ export interface User {
   institution_id: string | null;
   institution_name?: string;
   institution_code?: string;
+  institution_logo?: string;
+  institution_website?: string;
+  institution_motto?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  accent_color?: string;
   role: {
     id: string;
+    code?: string;
     name: string;
-    display_name: string;
+    display_name?: string;
   };
   branch?: {
     id: string;
@@ -26,7 +33,9 @@ export interface Branch {
   id: string;
   institution_id: string;
   name: string;
+  branch_name?: string;
   code?: string;
+  branch_code?: string;
   address?: string;
   phone?: string;
   email?: string;
@@ -203,8 +212,10 @@ export interface Designation {
 
 export interface Institution {
   id: string;
-  name: string;
+  name?: string;
   code?: string;
+  institution_name?: string;
+  institution_code?: string;
   logo?: string;
   mobile?: string;
   address?: string;
@@ -215,6 +226,9 @@ export interface Institution {
   currency_symbol: string;
   timezone: string;
   motto?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  accent_color?: string;
 }
 
 export interface PaginatedResponse<T> {

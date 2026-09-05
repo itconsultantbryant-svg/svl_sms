@@ -10,26 +10,31 @@ export default function DashboardPage() {
   const { data: stats } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
     queryFn: () => api.get('/dashboard/stats').then(r => r.data),
+    refetchInterval: 30000,
   });
 
   const { data: feeData } = useQuery({
     queryKey: ['dashboard-fee-summary'],
     queryFn: () => api.get('/dashboard/fee-summary').then(r => r.data).catch(() => null),
+    refetchInterval: 30000,
   });
 
   const { data: financeData } = useQuery({
     queryKey: ['dashboard-finance'],
     queryFn: () => api.get('/dashboard/finance-summary').then(r => r.data).catch(() => null),
+    refetchInterval: 30000,
   });
 
   const { data: genderStats } = useQuery({
     queryKey: ['dashboard-gender'],
     queryFn: () => api.get('/dashboard/gender-stats').then(r => r.data),
+    refetchInterval: 30000,
   });
 
   const { data: attendanceData } = useQuery({
     queryKey: ['dashboard-attendance-weekly'],
     queryFn: () => api.get('/dashboard/attendance-weekly').then(r => r.data).catch(() => null),
+    refetchInterval: 30000,
   });
 
   const currentMonth = new Date().toLocaleString('default', { month: 'long' });

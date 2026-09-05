@@ -1,29 +1,62 @@
 import axios from 'axios';
 
-function resolveApiBaseUrl(): string {
-  const raw = (import.meta.env.VITE_API_URL || '').trim();
-  const fallback = 'http://localhost:3001/api';
-  if (!raw) return fallback;
+// In the web build VITE_API_URL is baked in at build time (from .env.production).
+// In the Electron desktop build VITE_API_URL is intentionally left empty and the
+// real backend URL (with its dynamically assigned port) is fetched from the main
+// process at runtime via the preload bridge (window.api.getApiUrl()).
+const buildTimeUrl = (import.meta.env.VITE_API_URL || '').trim();
+const fallbackUrl = 'http://localhost:3001/api';
 
-  // Accept either https://host or https://host/api
-  const normalized = raw.replace(/\/+$/, '');
-  return normalized.endsWith('/api') ? normalized : `${normalized}/api`;
+function normalize(raw: string): string {
+  const trimmed = raw.replace(/\/+$/, '');
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
 }
 
-const baseURL = resolveApiBaseUrl();
+let resolvedBaseUrl: string | null = null;
+
+async function resolveBaseUrl(): Promise<string> {
+  if (resolvedBaseUrl) return resolvedBaseUrl;
+
+  // Electron desktop shell: ask the main process for the real backend URL.
+  const apiBridge = (window as any).api;
+  if (apiBridge && typeof apiBridge.getApiUrl === 'function') {
+    try {
+      const url = await apiBridge.getApiUrl();
+      if (url) {
+        resolvedBaseUrl = url;
+        return resolvedBaseUrl;
+      }
+    } catch {
+      // ignore — fall through to the build-time / default URL
+    }
+  }
+
+  resolvedBaseUrl = buildTimeUrl ? normalize(buildTimeUrl) : fallbackUrl;
+  return resolvedBaseUrl;
+}
+
+const initialBaseURL = buildTimeUrl ? normalize(buildTimeUrl) : fallbackUrl;
 
 console.log('=== API CONFIGURATION ===');
 console.log('Environment:', import.meta.env.MODE);
 console.log('VITE_API_URL from env:', import.meta.env.VITE_API_URL);
-console.log('Using baseURL:', baseURL);
+console.log('Initial baseURL:', initialBaseURL);
 console.log('========================');
 
 export const api = axios.create({
-  baseURL,
+  baseURL: initialBaseURL,
   headers: {
     'Content-Type': 'application/json',
   },
   timeout: 30000,
+});
+
+// Resolve the real backend base URL at request time. In Electron this fetches
+// the dynamically assigned localhost port from the main process; otherwise it
+// falls back to the baked-in build URL. Cached after the first successful resolve.
+api.interceptors.request.use(async (config) => {
+  config.baseURL = await resolveBaseUrl();
+  return config;
 });
 
 // Add auth token to requests

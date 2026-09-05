@@ -9,7 +9,11 @@ import fs from 'fs';
 // Keep a global reference of the window object
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
+let backendServer: import('http').Server | null = null;
 let updateCheckInterval: ReturnType<typeof setInterval> | null = null;
+// Port the local backend actually bound to. Set in createWindow() and read by
+// the get-api-url / get-license-status IPC handlers so they never hardcode 3001.
+let backendPort = 3001;
 
 const isWindows = process.platform === 'win32';
 const isMac = process.platform === 'darwin';
@@ -75,110 +79,115 @@ function findAvailablePort(startPort: number): Promise<number> {
 }
 
 /**
- * Spawn the Node.js backend process
+ * Wait until the local backend answers /api/health (or time out).
  */
-async function spawnBackend(): Promise<number> {
-  let lastBackendError = '';
+async function waitForBackend(port: number, lastError: string): Promise<number> {
+  const maxAttempts = 30;
+  for (let attempts = 0; attempts < maxAttempts; attempts++) {
+    try {
+      const response = await fetch(`http://localhost:${port}/api/health`);
+      if (response.ok) {
+        logMessage('Backend is ready');
+        return port;
+      }
+    } catch {
+      // not ready yet
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(lastError || 'Backend failed to start within timeout');
+}
+
+/**
+ * DEV ONLY: run the backend as a child process via tsx (hot reload).
+ */
+async function spawnDevBackend(port: number): Promise<number> {
+  let lastError = '';
+  const unpackedRoot = path.join(__dirname, '..');
+  const backendPath = path.join(__dirname, '../src/index.ts');
+  logMessage(`Backend entry: ${backendPath}`);
+  logMessage(`Backend cwd: ${unpackedRoot}`);
+
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  env.NODE_ENV = 'development';
+  env.PORT = port.toString();
+  env.CORS_ORIGINS = 'http://localhost:*,app://localhost,file://*';
+  env.DB_PATH = path.join(app.getPath('userData'), 'svl-sms.db');
+  env.ELECTRON_MODE = 'true';
+
+  backendProcess = spawn('tsx', ['watch', backendPath], {
+    env,
+    cwd: unpackedRoot,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: false,
+  });
+
+  backendProcess.stdout?.on('data', (d) => logMessage(`Backend: ${d.toString().trim()}`, 'info'));
+  backendProcess.stderr?.on('data', (d) => {
+    lastError = d.toString().trim();
+    logMessage(`Backend Error: ${lastError}`, 'error');
+  });
+  backendProcess.on('error', (err) => {
+    lastError = err.message;
+    logMessage(`Failed to start backend: ${err.message}`, 'error');
+  });
+  backendProcess.on('exit', (code) => {
+    logMessage(`Backend process exited with code ${code}`, 'warn');
+    backendProcess = null;
+  });
+
+  return waitForBackend(port, lastError);
+}
+
+/**
+ * PROD: run the backend INSIDE the Electron main process.
+ *
+ * A packaged Electron app ships no standalone Node.exe, and on Windows none of
+ * the Unix system-Node paths exist — so the old code fell back to spawning the
+ * Electron binary itself to run the backend. In a packaged build that just
+ * re-launches the whole app (fork-bomb of windows on Windows) and never starts
+ * a real HTTP server. Running the Express app in-process uses the Electron
+ * runtime where better-sqlite3 is already rebuilt, with no separate Node and no
+ * native-module ABI mismatch.
+ */
+async function startInProcessBackend(port: number): Promise<number> {
+  const unpackedRoot = getUnpackedAppRoot();
+  const backendPath = path.join(unpackedRoot, 'dist', 'backend', 'index.js');
+  logMessage(`Loading backend in-process: ${backendPath}`);
+
+  if (!fs.existsSync(backendPath)) {
+    throw new Error(`Backend file missing: ${backendPath}`);
+  }
+
+  // Must be set BEFORE requiring the backend — its DB init reads DB_PATH.
+  process.env.NODE_ENV = 'production';
+  process.env.PORT = port.toString();
+  process.env.CORS_ORIGINS = 'http://localhost:*,app://localhost,file://*';
+  process.env.DB_PATH = path.join(app.getPath('userData'), 'svl-sms.db');
+  process.env.ELECTRON_MODE = 'true';
 
   try {
-    const port = await findAvailablePort(3001);
-    logMessage(`Starting backend on port ${port}`);
-
-    const unpackedRoot = isDev ? path.join(__dirname, '..') : getUnpackedAppRoot();
-    const backendPath = isDev
-      ? path.join(__dirname, '../src/index.ts')
-      : path.join(unpackedRoot, 'dist', 'backend', 'index.js');
-
-    logMessage(`Backend entry: ${backendPath}`);
-    logMessage(`Backend cwd: ${unpackedRoot}`);
-
-    if (!isDev && !fs.existsSync(backendPath)) {
-      throw new Error(`Backend file missing: ${backendPath}`);
-    }
-
-    const env: NodeJS.ProcessEnv = { ...process.env };
-    env.NODE_ENV = isDev ? 'development' : 'production';
-    env.PORT = port.toString();
-    env.CORS_ORIGINS = 'http://localhost:*,app://localhost,file://*';
-    env.DB_PATH = path.join(app.getPath('userData'), 'svl-sms.db');
-    // Marks this backend as the desktop/offline build. /api/licensing/activate
-    // only auto-creates licenses for unknown keys when this is set, so the
-    // online deployment keeps rejecting unknown keys (see src/routes/licensing.ts).
-    env.ELECTRON_MODE = 'true';
-
-    let command: string;
-    let args: string[];
-
-    if (isDev) {
-      command = 'tsx';
-      args = ['watch', backendPath];
-    } else {
-      command = process.execPath;
-      args = [backendPath];
-      env.ELECTRON_RUN_AS_NODE = '1';
-      env.NODE_PATH = path.join(unpackedRoot, 'node_modules');
-    }
-
-    backendProcess = spawn(command, args, {
-      env,
-      cwd: unpackedRoot,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: false,
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const backendModule = require(backendPath);
+    const backendApp = backendModule.default || backendModule;
+    backendServer = backendApp.listen(port, () => {
+      logMessage(`Backend (in-process) listening on port ${port}`);
     });
-
-    if (backendProcess.stdout) {
-      backendProcess.stdout.on('data', (data) => {
-        logMessage(`Backend: ${data.toString().trim()}`, 'info');
-      });
-    }
-
-    if (backendProcess.stderr) {
-      backendProcess.stderr.on('data', (data) => {
-        const text = data.toString().trim();
-        lastBackendError = text;
-        logMessage(`Backend Error: ${text}`, 'error');
-      });
-    }
-
-    backendProcess.on('error', (err) => {
-      lastBackendError = err.message;
-      logMessage(`Failed to start backend: ${err.message}`, 'error');
-    });
-
-    backendProcess.on('exit', (code) => {
-      logMessage(`Backend process exited with code ${code}`, 'warn');
-      backendProcess = null;
-    });
-
-    const maxAttempts = 30;
-    let attempts = 0;
-
-    while (attempts < maxAttempts) {
-      if (!backendProcess) {
-        throw new Error(lastBackendError || 'Backend process exited early');
-      }
-
-      try {
-        const response = await fetch(`http://localhost:${port}/api/health`);
-        if (response.ok) {
-          logMessage('Backend is ready');
-          return port;
-        }
-      } catch {
-        // not ready yet
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      attempts++;
-    }
-
-    throw new Error(
-      lastBackendError || 'Backend failed to start within timeout'
-    );
   } catch (err) {
-    logMessage(`Error spawning backend: ${err}`, 'error');
+    logMessage(`Error starting in-process backend: ${err}`, 'error');
     throw err;
   }
+
+  return waitForBackend(port, '');
+}
+
+/**
+ * Start the backend: child process in dev, in-process in production.
+ */
+async function spawnBackend(): Promise<number> {
+  const port = await findAvailablePort(3001);
+  logMessage(`Resolved backend port: ${port}`);
+  return isDev ? spawnDevBackend(port) : startInProcessBackend(port);
 }
 
 /**
@@ -186,7 +195,6 @@ async function spawnBackend(): Promise<number> {
  */
 async function createWindow(): Promise<void> {
   // Start the backend
-  let backendPort: number;
   try {
     backendPort = await spawnBackend();
   } catch (err) {
@@ -213,8 +221,18 @@ async function createWindow(): Promise<void> {
     },
   });
 
-  // Set environment variable for frontend
-  process.env.VITE_API_URL = `http://localhost:${backendPort}/api`;
+  // The frontend discovers the real backend URL at runtime via the preload
+  // bridge (window.api.getApiUrl() → the 'get-api-url' IPC handler below), so
+  // there is no need to inject it as a build-time env var here.
+
+  // Never let the renderer open new Electron windows/tabs. Any external http(s)
+  // link is sent to the user's default browser instead; everything else is denied.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
 
   const startUrl = isDev
     ? 'http://localhost:5173' // Vite dev server
@@ -351,10 +369,16 @@ function setupDeepLinking(): void {
  * Setup IPC handlers
  */
 function setupIPC(): void {
+  // Return the dynamically assigned local backend URL so the renderer always
+  // talks to the bundled backend (its port is chosen at runtime).
+  ipcMain.handle('get-api-url', () => {
+    return `http://localhost:${backendPort}/api`;
+  });
+
   // Get license status
   ipcMain.handle('get-license-status', async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/licensing/status');
+      const response = await fetch(`http://localhost:${backendPort}/api/licensing/status`);
       const data = await response.json();
       return data;
     } catch (err) {
@@ -496,7 +520,7 @@ app.on('before-quit', () => {
     clearInterval(updateCheckInterval);
   }
 
-  // Kill backend process
+  // Kill backend process (dev child process)
   if (backendProcess) {
     try {
       if (isWindows) {
@@ -509,6 +533,16 @@ app.on('before-quit', () => {
     } catch (err) {
       logMessage(`Error killing backend process: ${err}`, 'warn');
     }
+  }
+
+  // Close in-process backend server (production)
+  if (backendServer) {
+    try {
+      backendServer.close();
+    } catch (err) {
+      logMessage(`Error closing backend server: ${err}`, 'warn');
+    }
+    backendServer = null;
   }
 });
 

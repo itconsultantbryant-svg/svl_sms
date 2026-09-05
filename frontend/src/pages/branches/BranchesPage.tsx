@@ -88,11 +88,11 @@ export default function BranchesPage() {
                   <Building2 size={18} className={branch.is_main ? 'text-primary-600' : 'text-gray-500'} />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">{branch.name}</h3>
+                  <h3 className="font-semibold text-gray-900">{branch.name || branch.branch_name}</h3>
                   {branch.is_main ? (
                     <span className="text-xs text-primary-600 font-medium">Main Campus</span>
                   ) : (
-                    <span className="text-xs text-gray-500">{branch.code || ''}</span>
+                    <span className="text-xs text-gray-500">{branch.code || branch.branch_code || ''}</span>
                   )}
                 </div>
               </div>

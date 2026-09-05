@@ -42,6 +42,13 @@ export interface ElectronAPI {
   getLicenseStatus(): Promise<LicenseStatus>;
 
   /**
+   * Get the dynamically assigned local backend URL (including the chosen port).
+   * Used by the frontend so it always talks to the bundled backend rather than a
+   * remote server — even though the port is picked at runtime.
+   */
+  getApiUrl(): Promise<string>;
+
+  /**
    * Open an external link in the default browser
    */
   openExternalLink(url: string): Promise<ExternalLinkResult>;

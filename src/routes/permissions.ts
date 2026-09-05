@@ -136,6 +136,20 @@ const ROLE_TEMPLATES = {
     'dashboard.view',
     'students.view',
     'communication.send', 'communication.view'
+  ],
+  registrar: [
+    'dashboard.view',
+    'students.view', 'students.create', 'students.edit',
+    'attendance.view',
+    'reports.view', 'reports.generate',
+    'communication.view', 'communication.send'
+  ],
+  finance_officer: [
+    'dashboard.view',
+    'students.view',
+    'fees.view', 'fees.create', 'fees.collect',
+    'accounts.view', 'accounts.manage',
+    'reports.view', 'reports.generate', 'reports.export'
   ]
 };
 

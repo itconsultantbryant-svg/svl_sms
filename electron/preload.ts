@@ -45,6 +45,15 @@ const api = {
   },
 
   /**
+   * Get the dynamically assigned local backend URL (including the chosen port).
+   * Used by the frontend so it always talks to the bundled backend, never a
+   * remote server — even though the port is picked at runtime.
+   */
+  getApiUrl: (): Promise<string> => {
+    return ipcRenderer.invoke('get-api-url');
+  },
+
+  /**
    * Open an external link
    */
   openExternalLink: (url: string): Promise<{ success: boolean; error?: string }> => {
@@ -126,13 +135,4 @@ try {
   contextBridge.exposeInMainWorld('api', api);
 } catch (err) {
   console.error('Failed to expose API:', err);
-}
-
-/**
- * Declare the API types for TypeScript
- */
-declare global {
-  interface Window {
-    api: typeof api;
-  }
 }

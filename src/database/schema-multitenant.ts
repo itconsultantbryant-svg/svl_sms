@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS institutions (
   logo TEXT,
   favicon TEXT,
   motto TEXT,
+  primary_color TEXT DEFAULT '#1e40af',
+  secondary_color TEXT DEFAULT '#3b82f6',
+  accent_color TEXT DEFAULT '#f59e0b',
 
   -- Configuration
   currency TEXT DEFAULT 'USD',

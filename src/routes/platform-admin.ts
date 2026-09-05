@@ -136,6 +136,10 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
     postal_code,
     country,
     motto,
+    logo,
+    primary_color,
+    secondary_color,
+    accent_color,
     currency,
     timezone,
     subscription_plan,
@@ -172,10 +176,11 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
       INSERT INTO institutions (
         id, institution_code, institution_name, institution_type,
         email, phone, mobile, website, address, county, city, postal_code, country,
-        motto, currency, currency_symbol, timezone,
+        motto, logo, primary_color, secondary_color, accent_color,
+        currency, currency_symbol, timezone,
         subscription_plan, subscription_status, subscription_start_date,
         max_students, max_staff, is_active, setup_completed, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?)
     `).run(
       institutionId,
       institution_code,
@@ -191,6 +196,10 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
       postal_code || null,
       country || 'Liberia',
       motto || null,
+      logo || null,
+      primary_color || '#1e40af',
+      secondary_color || '#3b82f6',
+      accent_color || '#f59e0b',
       currency || 'USD',
       '$',
       timezone || 'Africa/Monrovia',
@@ -217,20 +226,58 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
       phone
     );
 
-    // 3. Create institution admin role
+    // 3. Create institution admin + default operational roles
     db.prepare(`
       INSERT INTO roles (
         id, institution_id, role_code, role_name, description,
-        is_system_role, is_platform_role, role_level, is_active
-      ) VALUES (?, ?, ?, ?, ?, 1, 0, ?, 1)
+        is_system_role, is_platform_role, role_level, permissions, is_active
+      ) VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?, 1)
     `).run(
       institutionAdminRoleId,
       institutionId,
       'institution_admin',
       'Institution Administrator',
       'Full control over institution',
-      'institution'
+      'institution',
+      null
     );
+
+    const defaultRoles: Array<{ code: string; name: string; description: string; permissions: string[] }> = [
+      {
+        code: 'teacher',
+        name: 'Teacher',
+        description: 'Classroom teacher',
+        permissions: ['dashboard.view', 'students.view', 'attendance.view', 'attendance.mark', 'assignments.view', 'assignments.create', 'assignments.edit', 'assignments.grade', 'exams.view', 'marks.view', 'marks.enter', 'timetable.view', 'communication.view', 'communication.send', 'reports.view'],
+      },
+      {
+        code: 'accountant',
+        name: 'Finance Officer',
+        description: 'Fees, payments and accounts',
+        permissions: ['dashboard.view', 'students.view', 'fees.view', 'fees.create', 'fees.collect', 'accounts.view', 'accounts.manage', 'reports.view', 'reports.generate', 'reports.export'],
+      },
+      {
+        code: 'registrar',
+        name: 'Registrar / Admission Officer',
+        description: 'Admissions and student records',
+        permissions: ['dashboard.view', 'students.view', 'students.create', 'students.edit', 'attendance.view', 'reports.view', 'reports.generate', 'communication.view', 'communication.send'],
+      },
+      {
+        code: 'staff',
+        name: 'Staff',
+        description: 'General school staff',
+        permissions: ['dashboard.view', 'students.view', 'attendance.view', 'timetable.view', 'reports.view', 'communication.view'],
+      },
+    ];
+
+    const insertRole = db.prepare(`
+      INSERT INTO roles (
+        id, institution_id, role_code, role_name, description,
+        is_system_role, is_platform_role, role_level, permissions, is_active
+      ) VALUES (?, ?, ?, ?, ?, 1, 0, 'institution', ?, 1)
+    `);
+    for (const role of defaultRoles) {
+      insertRole.run(generateId(), institutionId, role.code, role.name, role.description, JSON.stringify(role.permissions));
+    }
 
     // 4. Create admin user
     const passwordHash = bcrypt.hashSync(admin_user.password || 'admin123', 10);
@@ -306,6 +353,10 @@ platformAdminRouter.put('/institutions/:id', (req: AuthRequest, res: Response) =
     city,
     postal_code,
     motto,
+    logo,
+    primary_color,
+    secondary_color,
+    accent_color,
     currency,
     timezone,
     max_students,
@@ -334,6 +385,10 @@ platformAdminRouter.put('/institutions/:id', (req: AuthRequest, res: Response) =
       city = COALESCE(?, city),
       postal_code = COALESCE(?, postal_code),
       motto = COALESCE(?, motto),
+      logo = COALESCE(?, logo),
+      primary_color = COALESCE(?, primary_color),
+      secondary_color = COALESCE(?, secondary_color),
+      accent_color = COALESCE(?, accent_color),
       currency = COALESCE(?, currency),
       timezone = COALESCE(?, timezone),
       max_students = COALESCE(?, max_students),
@@ -343,8 +398,9 @@ platformAdminRouter.put('/institutions/:id', (req: AuthRequest, res: Response) =
     WHERE id = ?
   `).run(
     institution_name, institution_type, email, phone, mobile, website,
-    address, county, city, postal_code, motto, currency, timezone,
-    max_students, max_staff, is_active, id
+    address, county, city, postal_code, motto, logo,
+    primary_color, secondary_color, accent_color,
+    currency, timezone, max_students, max_staff, is_active, id
   );
 
   res.json({ message: 'Institution updated successfully' });
@@ -402,32 +458,74 @@ platformAdminRouter.patch('/institutions/:id/status', (req: AuthRequest, res: Re
 
 platformAdminRouter.get('/dashboard/stats', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
+  const safe = (fn: () => any, fallback: any = 0) => {
+    try { return fn(); } catch { return fallback; }
+  };
 
   const stats = db.prepare(`
     SELECT
       (SELECT COUNT(*) FROM institutions) as total_institutions,
       (SELECT COUNT(*) FROM institutions WHERE is_active = 1) as active_institutions,
+      (SELECT COUNT(*) FROM institutions WHERE subscription_status = 'trial') as trial_institutions,
+      (SELECT COUNT(*) FROM institutions WHERE subscription_status = 'suspended') as suspended_institutions,
       (SELECT COUNT(*) FROM students) as total_students,
+      (SELECT COUNT(*) FROM students WHERE status = 'active') as active_students,
       (SELECT COUNT(*) FROM users WHERE user_type != 'platform_admin') as total_users,
-      (SELECT COUNT(*) FROM branches) as total_branches
+      (SELECT COUNT(*) FROM employees WHERE is_active = 1) as total_employees,
+      (SELECT COUNT(*) FROM employees WHERE is_teacher = 1 AND is_active = 1) as total_teachers,
+      (SELECT COUNT(*) FROM parents) as total_parents,
+      (SELECT COUNT(*) FROM branches WHERE is_active = 1) as total_branches,
+      (SELECT COUNT(*) FROM licenses WHERE status = 'active') as active_licenses
   `).get() as any;
 
-  // Institutions by subscription status
+  const totalRevenue = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount_paid),0) as v FROM fee_payments`).get() as any).v);
+  const monthlyRevenue = safe(() => (db.prepare(`
+    SELECT COALESCE(SUM(amount_paid),0) as v FROM fee_payments
+    WHERE strftime('%Y-%m', payment_date) = strftime('%Y-%m', 'now')
+  `).get() as any).v);
+  const monthlyExpense = safe(() => (db.prepare(`
+    SELECT COALESCE(SUM(amount),0) as v FROM account_transactions
+    WHERE type = 'expense' AND strftime('%Y-%m', transaction_date) = strftime('%Y-%m', 'now')
+  `).get() as any).v);
+
+  const feeSummary = [];
+  for (let i = 0; i < 12; i++) {
+    const month = String(i + 1).padStart(2, '0');
+    const year = new Date().getFullYear();
+    const startDate = `${year}-${month}-01`;
+    const endDate = i < 11 ? `${year}-${String(i + 2).padStart(2, '0')}-01` : `${year + 1}-01-01`;
+    const total = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM fee_invoices WHERE due_date >= ? AND due_date < ?`).get(startDate, endDate) as any).v);
+    const collected = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount_paid),0) as v FROM fee_payments WHERE payment_date >= ? AND payment_date < ?`).get(startDate, endDate) as any).v);
+    feeSummary.push({ month: i + 1, total, collected, remaining: Math.max(0, Number(total) - Number(collected)) });
+  }
+
+  const institutionsByPlan = db.prepare(`
+    SELECT subscription_plan, COUNT(*) as count FROM institutions GROUP BY subscription_plan
+  `).all();
+
+  const perInstitution = db.prepare(`
+    SELECT i.id, i.institution_code, i.institution_name, i.subscription_plan, i.subscription_status,
+           i.is_active, i.logo, i.created_at,
+           (SELECT COUNT(*) FROM students s WHERE s.institution_id = i.id AND s.status = 'active') as students,
+           (SELECT COUNT(*) FROM employees e WHERE e.institution_id = i.id AND e.is_active = 1) as staff,
+           (SELECT COUNT(*) FROM users u WHERE u.institution_id = i.id) as users
+    FROM institutions i
+    ORDER BY i.created_at DESC
+  `).all();
+
   const subscriptionStats = db.prepare(`
     SELECT subscription_status, COUNT(*) as count
     FROM institutions
     GROUP BY subscription_status
   `).all();
 
-  // Recent institutions
   const recentInstitutions = db.prepare(`
-    SELECT id, institution_code, institution_name, created_at, subscription_status
+    SELECT id, institution_code, institution_name, created_at, subscription_status, subscription_plan, logo
     FROM institutions
     ORDER BY created_at DESC
-    LIMIT 5
+    LIMIT 8
   `).all();
 
-  // Subscription expiring soon (within 30 days)
   const expiringSoon = db.prepare(`
     SELECT id, institution_code, institution_name, subscription_end_date
     FROM institutions
@@ -437,11 +535,29 @@ platformAdminRouter.get('/dashboard/stats', (req: AuthRequest, res: Response) =>
     ORDER BY subscription_end_date ASC
   `).all();
 
+  const institutionGrowth = db.prepare(`
+    SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
+    FROM institutions
+    WHERE created_at >= DATE('now', '-11 months')
+    GROUP BY strftime('%Y-%m', created_at)
+    ORDER BY month
+  `).all();
+
   res.json({
-    stats,
+    stats: {
+      ...stats,
+      total_revenue: totalRevenue,
+      monthly_revenue: monthlyRevenue,
+      monthly_expense: monthlyExpense,
+    },
+    fee_summary: feeSummary,
+    institutions_by_plan: institutionsByPlan,
+    per_institution: perInstitution,
     subscription_breakdown: subscriptionStats,
     recent_institutions: recentInstitutions,
-    expiring_soon: expiringSoon
+    expiring_soon: expiringSoon,
+    institution_growth: institutionGrowth,
+    generated_at: new Date().toISOString(),
   });
 });
 

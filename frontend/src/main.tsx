@@ -7,13 +7,15 @@ import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
 import { InstitutionProvider } from './contexts/InstitutionContext';
 import { LicenseProvider } from './contexts/LicenseContext';
+import { BrandProvider } from './contexts/BrandContext';
 import './index.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
+      refetchInterval: 60000,
     },
   },
 });
@@ -25,8 +27,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <InstitutionProvider>
           <LicenseProvider>
             <AuthProvider>
-              <App />
-              <Toaster position="top-right" />
+              <BrandProvider>
+                <App />
+                <Toaster position="top-right" />
+              </BrandProvider>
             </AuthProvider>
           </LicenseProvider>
         </InstitutionProvider>

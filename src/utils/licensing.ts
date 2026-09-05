@@ -1,148 +1,174 @@
 import crypto from 'crypto';
 
-// RSA Key Pair (generated once)
-// In production, keep the PRIVATE_KEY secure (server-side only)
-// PUBLIC_KEY is embedded in the app for offline validation
-const RSA_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
-MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCtB9eRfuvlZ47D
-FzRqX5FfJqxm4UdKgBoFsRX0GyJ9dwnu3zfQiJdasl3CrVG8czaE2o9xZ+3BY1db
-ns3vTgXFP3FrOxCWZpcnZRdRynzXst8NUd9r+mTS4jvyLBL/m2bkO2Xjptxlnen0
-Kh1IdoK3pfq8gG/FI1+gKzkUylEOEkb0/b0yX6siOh3EEDvy+36WOCs2RBUD3cWw
-1vCphumqHFLMgYOyAMouWAui+wczneAlHQ0rCCfZffZQ3OhLgrGb9Qbb4YjuFyPa
-chgT9y7FZUhu3jlQRxvggQQYdEzlTaoyMxqWfsgwbBlTOrwy2POEVH/y12yh1GbC
-iig81rNtAgMBAAECggEACq0+yL2hbjbJORyz3AgjcaYyrKgkIe13eELwqm7zM5/h
-Bxzodi+7e89LmEvhYi9kyDwD7mOTPjk0Rn/CesygcAb7EhAOCmMbBXAIM+s6mq+w
-8kLgoP/NcV11hVBhaBAi1ZycVqNbmvyXF1Jy8J9OxRNoPkdEPlCcDFzRE/Prnk0k
-btdmBfdZedPM5jxiGna7/MprzdBfnvH9o04XlF/mBnFvWZDO6OHfMLeHUVWTobF2
-cuVGTPX7tDZ1PKxXIuHlZHThn8UkFer4W69bHihnzTHgnQRVhmNPdAjMCnFQxNfc
-iaZQeFUIOJ4m+ZWnRcF4j2Rqq5nKpOXiJAmq9AUx6QKBgQDsWqVft/INpRY3ygaG
-ojqwoAf7CBY3HbYjK/yOk0vEYjNw/14Gqhi9kVRFiQ9J+7jL+1o8x6GYLYmhibpc
-hJ2nXg3JPPjk4DUFjdNBtF1dGqBYFyqVaz0T/v4vn72sKinYuzeCZ8PTZW7Zdkad
-jO/5m7eQw/rnvyg2RO6TzLTihQKBgQC7ab4vFZIA3c4kh7/SCK94/S8XF2pCMjVr
-ZKye95vQOZGArPbkQN5NDVtNIleB59WflIbIgKEqeLmlNt+1QQNgmV9HE0MnrA1u
-4cj5W+7XFBz+C1PeIbo38yLdjRn2B5lJwmNsQAtIFQxaNZfw37EsikjqAxVJwy6S
-923dGadFyQKBgCHV4DLRvH8jkQivjTuc4dYDMuFHCRce08I5O9CVWZVlkYOtqyI9
-G4mX0n6Z3mxy8sOQ2hw1X/bPHhLYCqvP+FnLZyHV7rOlPTHsWb/gODVp6GZz+o6l
-aXsBWBYtQhPxfUgflRTAEhKjRLkw628GjBwppJ++zp56iSErwRO7jHGZAoGAd+e9
-oE5CrX87xq97kJux+Myz9igq+dM5zk4JC2QMMnrClvsSsxK1p8Kl6YHRTvHPAVx7
-p4h0lMHMtOGY21SPHpzCEq1GR/mSVqDqfm/NLZpWukrxC6u0gttyMSF3vKs77a8L
-AVUwYpvk3UpwvdHAf2iyIdZ7JkhUYf8gMVeaZ9ECgYALeSU+y2hvSDNWB+9LE0ZB
-9/vYoaTulW8aEIWrCa5WYdRdBKS68VmdU7IXKUe5UpnJ1V/EceAQ/Bh/HZPDY5GL
-mQwu8n3QqxhUgGZwhBKzorSzxm+iJDuZgY8pWIs78/drdtW7LSWY2SdfN9gJWRP6
-Z5j1MsKqgnht1SEk1qOcgg==
------END PRIVATE KEY-----`;
+// ============================================================================
+// Offline-capable license key verification (Ed25519)
+// ----------------------------------------------------------------------------
+// A license key is a self-contained, signed token the desktop app verifies
+// OFFLINE using only the embedded PUBLIC key below. The PRIVATE key is NEVER
+// shipped in the desktop/electron bundle — it lives only in the platform
+// backend's LICENSE_PRIVATE_KEY env (see src/utils/license-issuer.ts). This
+// means a school running the offline .exe cannot forge valid keys.
+//
+// Key format: SVL-XXXX-XXXX-...-XXXX (Crockford base32, 28 groups of 4)
+//   payload (6 bytes):  version(1) | expiryDays(uint32 LE) | tier(uint8)
+//   signature (64 bytes): Ed25519 over the 6-byte payload
+//   70 bytes total -> base32 -> 112 chars -> 28 groups
+// ============================================================================
 
-const RSA_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArQfXkX7r5WeOwxc0al+R
-XyasZuFHSoAaBbEV9BsifXcJ7t830IiXWrJdwq1RvHM2hNqPcWftwWNXW57N704F
-xT9xazsQlmaXJ2UXUcp817LfDVHfa/pk0uI78iwS/5tm5Dtl46bcZZ3p9CodSHaC
-t6X6vIBvxSNfoCs5FMpRDhJG9P29Ml+rIjodxBA78vt+ljgrNkQVA93FsNbwqYbp
-qhxSzIGDsgDKLlgLovsHM53gJR0NKwgn2X32UNzoS4Kxm/UG2+GI7hcj2nIYE/cu
-xWVIbt45UEcb4IEEGHRM5U2qMjMaln7IMGwZUzq8MtjzhFR/8tdsodRmwoooPNaz
-bQIDAQAB
------END PUBLIC KEY-----`;
+// Embedded Ed25519 PUBLIC key (SPKI DER, base64). Ships in the app — safe to
+// expose. If you rotate the private key on the server, replace this value to
+// match and rebuild the desktop app.
+const LICENSE_PUBLIC_KEY_B64 =
+  'MCowBQYDK2VwAyEA7ZcSBN/eDFnIH7PRFLbyoHwgZBoOQzoxcn6GnF84mtc=';
 
-/**
- * Generate a signed license key
- * Format: SVL-XXXX-XXXX-XXXX-XXXX
- */
-export function generateLicenseKey(config: {
-  institution: string;
-  expiryDate: Date;
-  planTier: string;
-  machineId?: string;
-}): string {
-  // Create the data object to sign
-  const data = {
-    institution: config.institution,
-    expiry: config.expiryDate.toISOString(),
-    tier: config.planTier,
-    machine: config.machineId || '',
-    issued: new Date().toISOString(),
-  };
+// Crockford base32 — case-insensitive, no I/L/O/U/0-confusables.
+const B32_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
-  // Sign the data
-  const signature = signKey(data);
+const KEY_VERSION = 1;
+const PAYLOAD_BYTES = 6;
+const SIGNATURE_BYTES = 64;
+const TOTAL_BYTES = PAYLOAD_BYTES + SIGNATURE_BYTES; // 70
+const GROUP_COUNT = 28;
 
-  // Generate a random key ID — 2 bytes = 4 hex chars so the emitted key
-  // matches the documented SVL-XXXX-XXXX-XXXX-XXXX format (validated by
-  // validateLicenseKey). Earlier builds used a 4-byte id (8 hex chars), so
-  // the validator also accepts that trailing length for backward compat.
-  const keyId = crypto.randomBytes(2).toString('hex').toUpperCase();
+const PLAN_BY_CODE: Record<number, string> = {
+  1: 'demo',
+  2: 'standard',
+  3: 'premium',
+  4: 'enterprise',
+};
+const CODE_BY_PLAN: Record<string, number> = {
+  demo: 1,
+  standard: 2,
+  premium: 3,
+  enterprise: 4,
+};
 
-  // Return formatted license key: SVL-{signature}-{keyId}
-  const signatureShort = signature.substring(0, 32).toUpperCase();
-  return `SVL-${signatureShort.slice(0, 4)}-${signatureShort.slice(4, 8)}-${signatureShort.slice(8, 12)}-${keyId}`;
+function getPublicKey(): crypto.KeyObject {
+  return crypto.createPublicKey({
+    key: Buffer.from(LICENSE_PUBLIC_KEY_B64, 'base64'),
+    format: 'der',
+    type: 'spki',
+  });
 }
 
-/**
- * Sign data with RSA private key
- */
-export function signKey(data: any): string {
-  const jsonString = JSON.stringify(data);
-  const signer = crypto.createSign('sha256');
-  signer.update(jsonString);
-  signer.end();
+// ---- base32 (Crockford) encode/decode ----
 
-  const signature = signer.sign(RSA_PRIVATE_KEY, 'hex');
-  return signature;
-}
-
-/**
- * Verify a signature
- */
-export function verifyKeySignature(data: any, signature: string): boolean {
-  const jsonString = JSON.stringify(data);
-  const verifier = crypto.createVerify('sha256');
-  verifier.update(jsonString);
-  verifier.end();
-
-  try {
-    return verifier.verify(RSA_PUBLIC_KEY, signature, 'hex');
-  } catch (error) {
-    return false;
+function base32Encode(bytes: Buffer): string {
+  let bits = 0;
+  let value = 0;
+  let out = '';
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += B32_ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
   }
+  if (bits > 0) {
+    out += B32_ALPHABET[(value << (5 - bits)) & 31];
+  }
+  return out;
 }
 
-/**
- * Validate a license key (basic format validation)
- * Returns the extracted data if valid, null otherwise
- */
-export function validateLicenseKey(key: string): {
+function base32Decode(str: string): Buffer {
+  const clean = str
+    .toUpperCase()
+    .replace(/O/g, '0')
+    .replace(/[IL]/g, '1');
+  let bits = 0;
+  let value = 0;
+  const out: number[] = [];
+  for (const ch of clean) {
+    const idx = B32_ALPHABET.indexOf(ch);
+    if (idx === -1) throw new Error('invalid base32 char');
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(out);
+}
+
+// ---- field helpers ----
+
+function expiryDaysFromDate(date: Date): number {
+  return Math.floor(date.getTime() / 86400000);
+}
+
+function dateFromExpiryDays(days: number): Date {
+  return new Date(days * 86400000);
+}
+
+// ============================================================================
+// Validation — the only entry point the app uses. Performs REAL cryptographic
+// signature verification (not just a format regex).
+// ============================================================================
+
+export interface LicenseValidation {
   valid: boolean;
   institution?: string;
   expiry?: Date;
   planTier?: string;
-  machineId?: string;
   keyId?: string;
-} {
-  // Check format: SVL-XXXX-XXXX-XXXX-XXXX (last group may be 8 hex chars for
-  // keys issued by earlier builds that used a 4-byte key id).
-  const keyRegex = /^SVL-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4,8}$/i;
-
-  if (!keyRegex.test(key)) {
-    return { valid: false };
-  }
-
-  try {
-    // Extract parts
-    const parts = key.split('-');
-    const keyId = parts[4];
-
-    // In a real implementation, you'd verify the signature here
-    // For now, we accept the key as valid if it has the right format
-    return {
-      valid: true,
-      keyId,
-    };
-  } catch (error) {
-    return { valid: false };
-  }
 }
 
-/**
- * Generate a machine fingerprint for device identification
- */
+export function validateLicenseKey(key: string): LicenseValidation {
+  if (typeof key !== 'string') return { valid: false };
+  const normalized = key.trim().toUpperCase();
+
+  // Format: SVL- + 28 groups of 4 Crockford-base32 chars.
+  const groups = normalized.split('-');
+  if (groups.length !== GROUP_COUNT + 1 || groups[0] !== 'SVL') return { valid: false };
+  for (let i = 1; i < groups.length; i++) {
+    if (!/^[0-9A-Z]{4}$/.test(groups[i])) return { valid: false };
+  }
+
+  let raw: Buffer;
+  try {
+    raw = base32Decode(groups.slice(1).join(''));
+  } catch {
+    return { valid: false };
+  }
+  if (raw.length !== TOTAL_BYTES) return { valid: false };
+
+  const payload = raw.subarray(0, PAYLOAD_BYTES);
+  const signature = raw.subarray(PAYLOAD_BYTES);
+
+  let signatureOk = false;
+  try {
+    signatureOk = crypto.verify(null, payload, getPublicKey(), signature);
+  } catch {
+    signatureOk = false;
+  }
+  if (!signatureOk) return { valid: false };
+
+  const version = payload[0];
+  if (version !== KEY_VERSION) return { valid: false };
+
+  const expiryDays =
+    payload[1] | (payload[2] << 8) | (payload[3] << 16) | (payload[4] << 24);
+  const tierCode = payload[5];
+  const planTier = PLAN_BY_CODE[tierCode];
+  if (!planTier) return { valid: false };
+
+  const expiry = dateFromExpiryDays(expiryDays);
+  const keyId = base32Encode(payload).slice(0, 12);
+
+  return {
+    valid: true,
+    expiry,
+    planTier,
+    keyId,
+  };
+}
+
+// ============================================================================
+// Re-exported helpers used across the app
+// ============================================================================
+
 export function generateMachineFingerprint(): string {
   return crypto
     .createHash('sha256')
@@ -155,9 +181,6 @@ export function generateMachineFingerprint(): string {
     .digest('hex');
 }
 
-/**
- * Calculate days remaining until expiry
- */
 export function getDaysRemaining(expiryDate: Date): number {
   const now = new Date();
   const diffTime = expiryDate.getTime() - now.getTime();
@@ -165,9 +188,20 @@ export function getDaysRemaining(expiryDate: Date): number {
   return Math.max(0, diffDays);
 }
 
-/**
- * Check if a date is in the past
- */
 export function isExpired(expiryDate: Date): boolean {
   return new Date() > expiryDate;
 }
+
+// Plan/tier mapping exposed for the issuer and routes.
+export const LICENSE_PLAN_CODES = CODE_BY_PLAN;
+export const LICENSE_CODE_PLANS = PLAN_BY_CODE;
+
+// Layout constants (used by the issuer to build keys consistently).
+export const LICENSE_KEY_CONSTANTS = {
+  KEY_VERSION,
+  PAYLOAD_BYTES,
+  SIGNATURE_BYTES,
+  TOTAL_BYTES,
+  GROUP_COUNT,
+  B32_ALPHABET,
+};

@@ -1,18 +1,36 @@
-import { useState, FormEvent } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useState, FormEvent, useEffect } from 'react';
+import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBrand } from '../../contexts/BrandContext';
+import { getRoleHomePath } from '../../utils/roleHome';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
   const { user, login } = useAuth();
+  const { branding, loadBrandingByCode, setBranding } = useBrand();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [schoolCode, setSchoolCode] = useState(searchParams.get('school') || localStorage.getItem('svl_school_code') || '');
   const [loading, setLoading] = useState(false);
 
-  const homePath = user?.user_type === 'platform_admin' ? '/platform-admin' : '/dashboard';
+  useEffect(() => {
+    if (schoolCode.trim()) {
+      loadBrandingByCode(schoolCode.trim());
+    }
+  }, []);
 
-  if (user) return <Navigate to={homePath} replace />;
+  if (user) return <Navigate to={getRoleHomePath(user)} replace />;
+
+  const handleLoadSchool = async () => {
+    if (!schoolCode.trim()) {
+      toast.error('Enter your school code');
+      return;
+    }
+    const b = await loadBrandingByCode(schoolCode.trim());
+    if (!b) toast.error('School not found');
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -23,9 +41,20 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(username, password);
-      // login() persists the user to localStorage — read it to route superadmin correctly
       const stored = JSON.parse(localStorage.getItem('svl_user') || '{}');
-      navigate(stored?.user_type === 'platform_admin' ? '/platform-admin' : '/dashboard');
+      if (stored?.institution_code) {
+        setBranding({
+          institution_name: stored.institution_name,
+          institution_code: stored.institution_code,
+          logo: stored.institution_logo,
+          website: stored.institution_website,
+          motto: stored.institution_motto,
+          primary_color: stored.primary_color,
+          secondary_color: stored.secondary_color,
+          accent_color: stored.accent_color,
+        });
+      }
+      navigate(getRoleHomePath(stored));
       toast.success('Welcome back!');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Login failed');
@@ -34,15 +63,61 @@ export default function LoginPage() {
     }
   };
 
+  const primary = branding?.primary_color || '#1e40af';
+  const secondary = branding?.secondary_color || '#1e3a8a';
+  const schoolName = branding?.institution_name || 'SOFTWAREVALA LIBERIA';
+  const subtitle = branding?.institution_name
+    ? (branding.motto || 'School Management Portal')
+    : 'School Management System';
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-900 via-primary-800 to-primary-950">
-      <div className="w-full max-w-md">
+    <div
+      className="min-h-screen flex items-center justify-center"
+      style={{
+        background: `linear-gradient(135deg, ${primary} 0%, ${secondary} 55%, #0f172a 100%)`,
+      }}
+    >
+      <div className="w-full max-w-md px-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-primary-900 tracking-wide">
-              SOFTWAREVALA LIBERIA
+            {branding?.logo ? (
+              <img
+                src={branding.logo}
+                alt={schoolName}
+                className="h-16 w-auto mx-auto mb-3 object-contain"
+              />
+            ) : (
+              <div
+                className="w-14 h-14 rounded-xl mx-auto mb-3 flex items-center justify-center text-white text-xl font-bold"
+                style={{ backgroundColor: primary }}
+              >
+                {(schoolName || 'S').charAt(0)}
+              </div>
+            )}
+            <h1 className="text-xl font-bold tracking-wide" style={{ color: primary }}>
+              {schoolName}
             </h1>
-            <p className="text-sm text-gray-500 mt-1">School Management System</p>
+            <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
+            {branding?.institution_code && (
+              <p className="text-xs text-gray-400 mt-1">Code: {branding.institution_code}</p>
+            )}
+          </div>
+
+          <div className="mb-5">
+            <label className="block text-sm font-medium text-gray-700 mb-1">School Code</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={schoolCode}
+                onChange={(e) => setSchoolCode(e.target.value.toUpperCase())}
+                className="input-field"
+                placeholder="e.g. VHS"
+              />
+              <button type="button" onClick={handleLoadSchool} className="btn-secondary shrink-0">
+                Load
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">Enter your school code to show school branding</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -76,7 +151,8 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary w-full py-2.5"
+              className="w-full py-2.5 rounded-lg text-white font-medium transition-opacity disabled:opacity-50"
+              style={{ backgroundColor: primary }}
             >
               {loading ? 'Signing in...' : 'Login'}
             </button>
@@ -89,7 +165,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <p className="text-center text-xs text-primary-300 mt-6">
+        <p className="text-center text-xs text-white/70 mt-6">
           &copy; 2026 Softwarevala Liberia. All Rights Reserved.
         </p>
       </div>

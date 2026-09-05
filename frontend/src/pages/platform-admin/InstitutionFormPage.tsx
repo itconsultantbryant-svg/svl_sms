@@ -9,10 +9,16 @@ interface InstitutionFormData {
   institution_type: string;
   email: string;
   phone: string;
+  website: string;
   address: string;
   county: string;
   city: string;
   country: string;
+  motto: string;
+  logo: string;
+  primary_color: string;
+  secondary_color: string;
+  accent_color: string;
   subscription_plan: string;
   subscription_status: string;
   subscription_start_date: string;
@@ -41,10 +47,16 @@ export default function InstitutionFormPage() {
     institution_type: 'secondary',
     email: '',
     phone: '',
+    website: '',
     address: '',
     county: '',
     city: '',
     country: 'Liberia',
+    motto: '',
+    logo: '',
+    primary_color: '#1e40af',
+    secondary_color: '#3b82f6',
+    accent_color: '#f59e0b',
     subscription_plan: 'basic',
     subscription_status: 'trial',
     subscription_start_date: new Date().toISOString().split('T')[0],
@@ -221,6 +233,81 @@ export default function InstitutionFormPage() {
                 required
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Website
+              </label>
+              <input
+                type="url"
+                name="website"
+                value={formData.website}
+                onChange={handleChange}
+                placeholder="https://school.edu.lr"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Motto
+              </label>
+              <input
+                type="text"
+                name="motto"
+                value={formData.motto}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Branding */}
+        <div className="bg-white shadow-md rounded-lg p-6">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">Branding</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="md:col-span-2 flex items-center gap-4">
+              {formData.logo ? (
+                <img src={formData.logo} alt="Logo" className="h-16 w-16 object-contain rounded border" />
+              ) : (
+                <div
+                  className="h-16 w-16 rounded flex items-center justify-center text-white font-bold"
+                  style={{ backgroundColor: formData.primary_color }}
+                >
+                  {(formData.institution_name || 'S').charAt(0)}
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">School Logo</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 2 * 1024 * 1024) {
+                      alert('Logo must be under 2MB');
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => setFormData((prev) => ({ ...prev, logo: String(reader.result) }));
+                    reader.readAsDataURL(file);
+                  }}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Primary Color</label>
+              <input type="color" name="primary_color" value={formData.primary_color} onChange={handleChange} className="mt-1 h-10 w-full rounded border" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Secondary Color</label>
+              <input type="color" name="secondary_color" value={formData.secondary_color} onChange={handleChange} className="mt-1 h-10 w-full rounded border" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Accent Color</label>
+              <input type="color" name="accent_color" value={formData.accent_color} onChange={handleChange} className="mt-1 h-10 w-full rounded border" />
             </div>
           </div>
         </div>

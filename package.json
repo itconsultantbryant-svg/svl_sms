@@ -12,18 +12,19 @@
     "start": "node dist/index.js",
     "generate-license": "node tools/generate-license.js",
     "build:frontend": "cd frontend && npm install --include=dev --legacy-peer-deps && npm run build",
+    "build:frontend:electron": "cd frontend && npm install --include=dev --legacy-peer-deps && npm run build:electron",
     "build:backend": "tsc --project tsconfig.json",
     "build:electron": "tsc --project tsconfig.electron.json",
     "electron": "electron .",
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && npm run build:electron && electron .\"",
     "electron:prepare": "node scripts/prepare-electron-dist.js",
-    "electron-build": "npm run electron:prepare && electron-builder",
-    "electron-build:win": "npm run electron:prepare && electron-builder --win nsis --x64",
+    "electron-build": "npm run electron:prepare && electron-builder --config electron-builder.config.js",
+    "electron-build:win": "npm run electron:prepare && electron-builder --config electron-builder.config.js --win nsis --x64",
     "electron-build:win:zip": "npm run electron-build:win && node scripts/package-win-zip.js",
-    "electron-build:mac": "npm run electron:prepare && electron-builder --mac",
-    "electron-build:linux": "npm run electron:prepare && electron-builder --linux",
-    "electron-pack": "npm run electron:prepare && electron-builder --dir",
-    "electron-dist": "electron-builder"
+    "electron-build:mac": "npm run electron:prepare && electron-builder --config electron-builder.config.js --mac",
+    "electron-build:linux": "npm run electron:prepare && electron-builder --config electron-builder.config.js --linux",
+    "electron-pack": "npm run electron:prepare && electron-builder --config electron-builder.config.js --dir",
+    "electron-dist": "electron-builder --config electron-builder.config.js"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -44,6 +45,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
     "archiver": "^7.0.1",
     "concurrently": "^8.2.2",
     "electron": "^30.0.0",

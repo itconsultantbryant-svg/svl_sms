@@ -67,7 +67,83 @@ export function ensureAdminUser() {
     console.log('✓ Superadmin user created');
     console.log(`  Username: ${SUPERADMIN_USERNAME}`);
     console.log('  Password: SuperAdmin2024!');
+
+    // On the desktop/offline build, seed a default institution and a school
+    // admin so the freshly installed app is usable without a cloud connection.
+    // Online deployments skip this — schools are created via the platform admin.
+    if (process.env.ELECTRON_MODE === 'true') {
+      ensureOfflineInstitution();
+    }
   } catch (error) {
     console.error('Error ensuring superadmin user:', error);
+  }
+}
+
+/**
+ * Seed a default OFFLINE institution + a school administrator so a school can
+ * open the desktop app, activate a license, and log in immediately — no network
+ * required. Idempotent: only created when missing.
+ */
+function ensureOfflineInstitution() {
+  const db = getDatabase();
+  try {
+    let institution = db
+      .prepare("SELECT id FROM institutions WHERE institution_code = 'OFFLINE' LIMIT 1")
+      .get() as any;
+
+    if (!institution) {
+      const { v4: uuidv4 } = require('uuid');
+      const instId = uuidv4();
+      db.prepare(
+        `
+        INSERT INTO institutions
+        (id, institution_code, institution_name, institution_type, country, currency, currency_symbol, setup_completed)
+        VALUES (?, 'OFFLINE', 'Offline School', 'other', 'Liberia', 'USD', '$', 1)
+      `
+      ).run(instId);
+      institution = { id: instId };
+      console.log('✓ Offline institution created (OFFLINE)');
+    }
+
+    const instId = institution.id;
+
+    // Ensure an institution_admin role for this tenant.
+    let adminRole = db
+      .prepare("SELECT id FROM roles WHERE role_code = 'institution_admin' AND institution_id = ? LIMIT 1")
+      .get(instId) as any;
+    if (!adminRole) {
+      const { v4: uuidv4 } = require('uuid');
+      const roleId = uuidv4();
+      db.prepare(
+        `
+        INSERT INTO roles
+        (id, institution_id, role_code, role_name, description, is_system_role, role_level, permissions, is_active)
+        VALUES (?, ?, 'institution_admin', 'Institution Administrator', 'Full access to this institution', 1, 'institution', '[]', 1)
+      `
+      ).run(roleId, instId);
+      adminRole = { id: roleId };
+    }
+
+    // Ensure a default school admin user the school can sign in with.
+    const existingAdmin = db
+      .prepare("SELECT id FROM users WHERE username = 'schooladmin' LIMIT 1")
+      .get() as any;
+    if (!existingAdmin) {
+      const { v4: uuidv4 } = require('uuid');
+      const userId = uuidv4();
+      const hashedPassword = bcrypt.hashSync('SchoolAdmin2024!', 10);
+      db.prepare(
+        `
+        INSERT INTO users
+        (id, institution_id, branch_id, username, email, password_hash, first_name, last_name, role_id, user_type, is_active, email_verified)
+        VALUES (?, ?, NULL, 'schooladmin', 'schooladmin@offline.local', ?, 'School', 'Administrator', ?, 'institution_admin', 1, 1)
+      `
+      ).run(userId, instId, hashedPassword, adminRole.id);
+      console.log('✓ Offline school admin created');
+      console.log('  Username: schooladmin');
+      console.log('  Password: SchoolAdmin2024!');
+    }
+  } catch (error) {
+    console.error('Error ensuring offline institution:', error);
   }
 }

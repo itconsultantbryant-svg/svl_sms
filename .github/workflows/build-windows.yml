@@ -29,7 +29,12 @@ jobs:
       - name: Build Windows NSIS installer and ZIP
         run: npm run electron-build:win:zip
         env:
-          # Skip code signing for unsigned school offline builds
+          # Code signing (optional but required for distribution without SmartScreen warnings).
+          # CSC_LINK may be a file path OR a base64-encoded .pfx. If unset, electron-builder
+          # produces an unsigned installer (forceCodeSigning is false in the config).
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_NAME: ${{ secrets.CSC_NAME }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload Windows ZIP artifact
