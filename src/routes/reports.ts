@@ -2,64 +2,150 @@ import { Router, Response } from 'express';
 import { getDatabase } from '../database/init';
 import { AuthRequest, authorize } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
-import { generateId, paginate } from '../utils/helpers';
+import { generateId } from '../utils/helpers';
 
 export const reportsRouter = Router();
 
-// Apply tenant middleware to ALL routes
 reportsRouter.use(injectTenant);
 reportsRouter.use(requireTenant);
+
+function safeGet(fn: () => any, fallback: any = null) {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
 
 // Dashboard Statistics
 reportsRouter.get('/stats', (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
+    const iid = req.institution_id;
 
-    // Student stats
-    const students = db.prepare('SELECT COUNT(*) as total, COUNT(CASE WHEN status = ? THEN 1 END) as active FROM students').get('active') as any;
+    if (!iid) {
+      res.status(400).json({ error: 'Institution context required' });
+      return;
+    }
 
-    // Teacher stats
-    const teachers = db.prepare('SELECT COUNT(*) as total, COUNT(CASE WHEN is_active = 1 THEN 1 END) as active FROM employees WHERE is_teacher = 1').all();
+    const students = safeGet(
+      () =>
+        db
+          .prepare(
+            `SELECT COUNT(*) as total,
+                    COUNT(CASE WHEN status = 'active' THEN 1 END) as active
+             FROM students WHERE institution_id = ?`
+          )
+          .get(iid),
+      { total: 0, active: 0 }
+    );
 
-    // Financial stats (current month)
-    const finance = db.prepare(`
-      SELECT
-        COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-      FROM account_transactions
-      WHERE strftime('%Y-%m', date) = strftime('%Y-%m', 'now')
-    `).get() as any;
+    const teachers = safeGet(
+      () =>
+        db
+          .prepare(
+            `SELECT COUNT(*) as total,
+                    COUNT(CASE WHEN is_active = 1 THEN 1 END) as active
+             FROM employees
+             WHERE institution_id = ? AND is_teacher = 1`
+          )
+          .get(iid),
+      { total: 0, active: 0 }
+    );
 
-    // Fee collection stats
-    const fees = db.prepare(`
-      SELECT
-        COUNT(*) as total_invoices,
-        COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid,
-        COUNT(CASE WHEN status = 'unpaid' THEN 1 END) as unpaid,
-        COALESCE(SUM(total_amount), 0) as total_amount,
-        COALESCE(SUM(paid_amount), 0) as collected
-      FROM invoices
-      WHERE academic_session_id IN (SELECT id FROM academic_sessions WHERE is_current = 1)
-    `).get() as any;
+    const income = Number(
+      safeGet(
+        () =>
+          (db
+            .prepare(
+              `SELECT COALESCE(SUM(amount), 0) as v FROM income
+               WHERE institution_id = ? AND strftime('%Y-%m', date) = strftime('%Y-%m', 'now')`
+            )
+            .get(iid) as any)?.v,
+        0
+      )
+    );
+    const feeIncome = Number(
+      safeGet(
+        () =>
+          (db
+            .prepare(
+              `SELECT COALESCE(SUM(amount), 0) as v FROM payments
+               WHERE institution_id = ? AND status = 'completed'
+                 AND strftime('%Y-%m', payment_date) = strftime('%Y-%m', 'now')`
+            )
+            .get(iid) as any)?.v,
+        0
+      )
+    );
+    const expense = Number(
+      safeGet(
+        () =>
+          (db
+            .prepare(
+              `SELECT COALESCE(SUM(amount), 0) as v FROM expenses
+               WHERE institution_id = ? AND strftime('%Y-%m', date) = strftime('%Y-%m', 'now')`
+            )
+            .get(iid) as any)?.v,
+        0
+      )
+    );
+    const finance = {
+      income: income + feeIncome,
+      expense,
+      balance: income + feeIncome - expense,
+    };
 
-    // Attendance stats (today)
-    const attendance = db.prepare(`
-      SELECT
-        COUNT(*) as total,
-        COUNT(CASE WHEN status = 'present' THEN 1 END) as present,
-        COUNT(CASE WHEN status = 'absent' THEN 1 END) as absent
-      FROM attendance
-      WHERE date = date('now')
-    `).get() as any;
+    const fees = safeGet(
+      () =>
+        db
+          .prepare(
+            `SELECT
+               COUNT(*) as total_invoices,
+               COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid,
+               COUNT(CASE WHEN status IN ('unpaid','partial','overdue') THEN 1 END) as unpaid,
+               COALESCE(SUM(total_amount), 0) as total_amount,
+               COALESCE(SUM(paid_amount), 0) as collected
+             FROM invoices
+             WHERE institution_id = ?
+               AND (session_id IS NULL OR session_id IN (
+                 SELECT id FROM academic_sessions WHERE is_current = 1 AND institution_id = ?
+               ))`
+          )
+          .get(iid, iid),
+      { total_invoices: 0, paid: 0, unpaid: 0, total_amount: 0, collected: 0 }
+    );
+
+    const attendance = safeGet(
+      () =>
+        db
+          .prepare(
+            `SELECT
+               COUNT(*) as total,
+               COUNT(CASE WHEN sa.status = 'present' THEN 1 END) as present,
+               COUNT(CASE WHEN sa.status = 'absent' THEN 1 END) as absent
+             FROM student_attendance sa
+             JOIN attendance_sessions a ON sa.attendance_session_id = a.id
+             WHERE sa.institution_id = ? AND a.date = date('now')`
+          )
+          .get(iid),
+      { total: 0, present: 0, absent: 0 }
+    );
 
     res.json({
       students,
-      teachers: teachers[0] || { total: 0, active: 0 },
-      finance: { ...finance, balance: (finance?.income || 0) - (finance?.expense || 0) },
+      teachers,
+      finance,
       fees,
-      attendance: { ...attendance, percentage: attendance?.total ? ((attendance.present / attendance.total) * 100).toFixed(1) : 0 }
+      attendance: {
+        ...attendance,
+        percentage: attendance?.total
+          ? ((attendance.present / attendance.total) * 100).toFixed(1)
+          : 0,
+      },
     });
   } catch (err: any) {
+    console.error('reports/stats error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -68,27 +154,46 @@ reportsRouter.get('/stats', (req: AuthRequest, res: Response) => {
 reportsRouter.get('/students', (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
+    const iid = req.institution_id;
+    if (!iid) {
+      res.status(400).json({ error: 'Institution context required' });
+      return;
+    }
+
     const { class_id, section_id, status } = req.query as any;
+    let where = 'WHERE s.institution_id = ?';
+    const params: any[] = [iid];
+    if (class_id) {
+      where += ' AND s.class_id = ?';
+      params.push(class_id);
+    }
+    if (section_id) {
+      where += ' AND s.section_id = ?';
+      params.push(section_id);
+    }
+    if (status) {
+      where += ' AND s.status = ?';
+      params.push(status);
+    }
 
-    let where = 'WHERE 1=1';
-    const params: any[] = [];
-    if (class_id) { where += ' AND s.class_id = ?'; params.push(class_id); }
-    if (section_id) { where += ' AND s.section_id = ?'; params.push(section_id); }
-    if (status) { where += ' AND s.status = ?'; params.push(status); }
-
-    const students = db.prepare(`
-      SELECT s.*, c.name as class_name, sec.name as section_name,
-        (SELECT COUNT(*) FROM attendance a WHERE a.student_id = s.id AND a.status = 'present') as present_days,
-        (SELECT COUNT(*) FROM attendance a WHERE a.student_id = s.id) as total_days
-      FROM students s
-      LEFT JOIN classes c ON s.class_id = c.id
-      LEFT JOIN sections sec ON s.section_id = sec.id
-      ${where}
-      ORDER BY c.sort_order, sec.name, s.first_name
-    `).all(...params);
+    const students = db
+      .prepare(
+        `SELECT s.*, c.name as class_name, sec.name as section_name,
+          (SELECT COUNT(*) FROM student_attendance sa
+           WHERE sa.student_id = s.id AND sa.status = 'present') as present_days,
+          (SELECT COUNT(*) FROM student_attendance sa
+           WHERE sa.student_id = s.id) as total_days
+         FROM students s
+         LEFT JOIN classes c ON s.class_id = c.id
+         LEFT JOIN sections sec ON s.section_id = sec.id
+         ${where}
+         ORDER BY c.sort_order, sec.name, s.first_name`
+      )
+      .all(...params);
 
     res.json(students);
   } catch (err: any) {
+    console.error('reports/students error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -97,39 +202,73 @@ reportsRouter.get('/students', (req: AuthRequest, res: Response) => {
 reportsRouter.get('/financial', (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
+    const iid = req.institution_id;
+    if (!iid) {
+      res.status(400).json({ error: 'Institution context required' });
+      return;
+    }
+
     const { start_date, end_date, type } = req.query as any;
+    const params: any[] = [iid];
+    let dateFilter = '';
+    if (start_date) {
+      dateFilter += ' AND date >= ?';
+      params.push(start_date);
+    }
+    if (end_date) {
+      dateFilter += ' AND date <= ?';
+      params.push(end_date);
+    }
 
-    let where = 'WHERE 1=1';
-    const params: any[] = [];
-    if (start_date) { where += ' AND date >= ?'; params.push(start_date); }
-    if (end_date) { where += ' AND date <= ?'; params.push(end_date); }
-    if (type) { where += ' AND type = ?'; params.push(type); }
+    const incomeRows =
+      !type || type === 'income'
+        ? db
+            .prepare(
+              `SELECT i.id, i.amount, i.date, i.description, i.payment_method,
+                      'income' as type, ic.name as category_name
+               FROM income i
+               LEFT JOIN income_categories ic ON i.category_id = ic.id
+               WHERE i.institution_id = ? ${dateFilter}
+               ORDER BY i.date DESC`
+            )
+            .all(...params)
+        : [];
 
-    const transactions = db.prepare(`
-      SELECT at.*,
-        CASE
-          WHEN at.type = 'income' THEN ic.name
-          WHEN at.type = 'expense' THEN ec.name
-        END as category_name
-      FROM account_transactions at
-      LEFT JOIN income_categories ic ON at.category_id = ic.id
-      LEFT JOIN expense_categories ec ON at.category_id = ec.id
-      ${where}
-      ORDER BY at.date DESC
-    `).all(...params);
+    const expenseParams = [...params];
+    const expenseRows =
+      !type || type === 'expense'
+        ? db
+            .prepare(
+              `SELECT e.id, e.amount, e.date, e.description, e.payment_method,
+                      'expense' as type, ec.name as category_name
+               FROM expenses e
+               LEFT JOIN expense_categories ec ON e.category_id = ec.id
+               WHERE e.institution_id = ? ${dateFilter}
+               ORDER BY e.date DESC`
+            )
+            .all(...expenseParams)
+        : [];
 
-    const summary = db.prepare(`
-      SELECT
-        type,
-        COUNT(*) as count,
-        SUM(amount) as total
-      FROM account_transactions
-      ${where}
-      GROUP BY type
-    `).all(...params);
+    const transactions = [...(incomeRows as any[]), ...(expenseRows as any[])].sort((a, b) =>
+      String(b.date).localeCompare(String(a.date))
+    );
+
+    const summary = [
+      {
+        type: 'income',
+        count: (incomeRows as any[]).length,
+        total: (incomeRows as any[]).reduce((s, r) => s + Number(r.amount || 0), 0),
+      },
+      {
+        type: 'expense',
+        count: (expenseRows as any[]).length,
+        total: (expenseRows as any[]).reduce((s, r) => s + Number(r.amount || 0), 0),
+      },
+    ];
 
     res.json({ transactions, summary });
   } catch (err: any) {
+    console.error('reports/financial error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -138,30 +277,48 @@ reportsRouter.get('/financial', (req: AuthRequest, res: Response) => {
 reportsRouter.get('/attendance', (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
+    const iid = req.institution_id;
+    if (!iid) {
+      res.status(400).json({ error: 'Institution context required' });
+      return;
+    }
+
     const { start_date, end_date, class_id } = req.query as any;
+    const params: any[] = [iid];
+    let sessionFilter = '';
+    if (start_date) {
+      sessionFilter += ' AND a.date >= ?';
+      params.push(start_date);
+    }
+    if (end_date) {
+      sessionFilter += ' AND a.date <= ?';
+      params.push(end_date);
+    }
+    if (class_id) {
+      sessionFilter += ' AND s.class_id = ?';
+      params.push(class_id);
+    }
 
-    let where = 'WHERE 1=1';
-    const params: any[] = [];
-    if (start_date) { where += ' AND a.date >= ?'; params.push(start_date); }
-    if (end_date) { where += ' AND a.date <= ?'; params.push(end_date); }
-    if (class_id) { where += ' AND s.class_id = ?'; params.push(class_id); }
-
-    const report = db.prepare(`
-      SELECT s.id, s.admission_number, s.first_name, s.last_name, c.name as class_name,
-        COUNT(CASE WHEN a.status = 'present' THEN 1 END) as present,
-        COUNT(CASE WHEN a.status = 'absent' THEN 1 END) as absent,
-        COUNT(CASE WHEN a.status = 'late' THEN 1 END) as late,
-        COUNT(*) as total_days
-      FROM students s
-      LEFT JOIN attendance a ON s.id = a.student_id ${where.replace('WHERE 1=1', '')}
-      LEFT JOIN classes c ON s.class_id = c.id
-      WHERE s.status = 'active'
-      GROUP BY s.id
-      ORDER BY c.sort_order, s.first_name
-    `).all(...params);
+    const report = db
+      .prepare(
+        `SELECT s.id, s.admission_number, s.first_name, s.last_name, c.name as class_name,
+           COUNT(CASE WHEN sa.status = 'present' THEN 1 END) as present,
+           COUNT(CASE WHEN sa.status = 'absent' THEN 1 END) as absent,
+           COUNT(CASE WHEN sa.status = 'late' THEN 1 END) as late,
+           COUNT(sa.id) as total_days
+         FROM students s
+         LEFT JOIN classes c ON s.class_id = c.id
+         LEFT JOIN student_attendance sa ON sa.student_id = s.id
+         LEFT JOIN attendance_sessions a ON sa.attendance_session_id = a.id
+         WHERE s.institution_id = ? AND s.status = 'active' ${sessionFilter}
+         GROUP BY s.id
+         ORDER BY c.sort_order, s.first_name`
+      )
+      .all(...params);
 
     res.json(report);
   } catch (err: any) {
+    console.error('reports/attendance error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -170,36 +327,46 @@ reportsRouter.get('/attendance', (req: AuthRequest, res: Response) => {
 reportsRouter.get('/academic', (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
-    const { exam_id, class_id } = req.query as any;
+    const iid = req.institution_id;
+    if (!iid) {
+      res.status(400).json({ error: 'Institution context required' });
+      return;
+    }
 
+    const { exam_id, class_id } = req.query as any;
     if (!exam_id) {
       res.status(400).json({ error: 'Exam ID required' });
       return;
     }
 
-    let where = 'WHERE er.exam_id = ?';
-    const params: any[] = [exam_id];
-    if (class_id) { where += ' AND s.class_id = ?'; params.push(class_id); }
+    let where = 'WHERE r.exam_id = ? AND s.institution_id = ?';
+    const params: any[] = [exam_id, iid];
+    if (class_id) {
+      where += ' AND s.class_id = ?';
+      params.push(class_id);
+    }
 
-    const results = db.prepare(`
-      SELECT s.id, s.admission_number, s.first_name, s.last_name,
-        c.name as class_name, sec.name as section_name,
-        er.total_marks, er.marks_obtained, er.percentage, er.grade, er.rank
-      FROM students s
-      LEFT JOIN exam_results er ON s.id = er.student_id
-      LEFT JOIN classes c ON s.class_id = c.id
-      LEFT JOIN sections sec ON s.section_id = sec.id
-      ${where}
-      ORDER BY er.rank, s.first_name
-    `).all(...params);
+    const results = db
+      .prepare(
+        `SELECT s.id, s.admission_number, s.first_name, s.last_name,
+           c.name as class_name, sec.name as section_name,
+           r.total_marks, r.total_obtained as marks_obtained, r.percentage, r.grade, r.rank
+         FROM results r
+         JOIN students s ON s.id = r.student_id
+         LEFT JOIN classes c ON s.class_id = c.id
+         LEFT JOIN sections sec ON s.section_id = sec.id
+         ${where}
+         ORDER BY r.rank, s.first_name`
+      )
+      .all(...params);
 
     res.json(results);
   } catch (err: any) {
+    console.error('reports/academic error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Custom Reports
 reportsRouter.post('/custom', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   try {
     const { query, parameters } = req.body;
@@ -207,8 +374,6 @@ reportsRouter.post('/custom', authorize('platform_admin', 'institution_admin'), 
       res.status(400).json({ error: 'Query required' });
       return;
     }
-
-    // Basic SQL injection protection - only allow SELECT
     if (!query.trim().toUpperCase().startsWith('SELECT')) {
       res.status(400).json({ error: 'Only SELECT queries allowed' });
       return;
@@ -216,25 +381,29 @@ reportsRouter.post('/custom', authorize('platform_admin', 'institution_admin'), 
 
     const db = getDatabase();
     const results = db.prepare(query).all(...(parameters || []));
-
     res.json(results);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Backup Management
-reportsRouter.post('/backup', authorize('platform_admin', 'super_admin'), (req: AuthRequest, res: Response) => {
+reportsRouter.post('/backup', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
+    const iid = req.institution_id;
+    if (!iid) {
+      res.status(400).json({ error: 'Institution context required' });
+      return;
+    }
+
     const id = generateId();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupPath = `backups/backup_${timestamp}.db`;
 
-    // In production, implement actual file backup logic here
-    db.prepare('INSERT INTO system_backups (id, type, file_path, status, initiated_by) VALUES (?, ?, ?, ?, ?)').run(
-      id, 'database', backupPath, 'completed', req.user?.id || null
-    );
+    db.prepare(
+      `INSERT INTO system_backups (id, institution_id, type, file_path, status, initiated_by)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(id, iid, 'database', backupPath, 'completed', req.user?.id || null);
 
     res.status(201).json({ id, file_path: backupPath, message: 'Backup created' });
   } catch (err: any) {
@@ -242,54 +411,97 @@ reportsRouter.post('/backup', authorize('platform_admin', 'super_admin'), (req: 
   }
 });
 
-// List Backups
-reportsRouter.get('/backups', authorize('platform_admin', 'super_admin'), (req: AuthRequest, res: Response) => {
+reportsRouter.get('/backups', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
-    const backups = db.prepare('SELECT * FROM system_backups ORDER BY created_at DESC LIMIT 50').all();
+    const backups = db
+      .prepare(
+        `SELECT * FROM system_backups
+         WHERE institution_id = ? OR ? IS NULL
+         ORDER BY created_at DESC LIMIT 50`
+      )
+      .all(req.institution_id, req.institution_id);
     res.json(backups);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Bulk Operations Status
 reportsRouter.get('/bulk-operations', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
-    const operations = db.prepare('SELECT * FROM bulk_operations ORDER BY started_at DESC LIMIT 50').all();
+    const operations = safeGet(
+      () =>
+        db
+          .prepare(
+            `SELECT * FROM bulk_operations
+             WHERE institution_id = ?
+             ORDER BY started_at DESC LIMIT 50`
+          )
+          .all(req.institution_id),
+      []
+    );
     res.json(operations);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// System Health
-reportsRouter.get('/health', authorize('platform_admin', 'super_admin'), (req: AuthRequest, res: Response) => {
+reportsRouter.get('/health', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
+    const iid = req.institution_id;
 
-    // Database size
-    const dbSize = db.prepare("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()").get() as any;
+    const dbSize = safeGet(
+      () => db.prepare('SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()').get(),
+      { size: 0 }
+    );
 
-    // Table counts
-    const tables = db.prepare(`
-      SELECT name, (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=m.name) as count
-      FROM sqlite_master m WHERE type='table' AND name NOT LIKE 'sqlite_%'
-    `).all();
+    const tables = db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`
+      )
+      .all();
 
-    // Recent activity
     const recentActivity = {
-      students_today: db.prepare("SELECT COUNT(*) as count FROM students WHERE date(created_at) = date('now')").get(),
-      attendance_today: db.prepare("SELECT COUNT(*) as count FROM attendance WHERE date = date('now')").get(),
-      payments_today: db.prepare("SELECT COUNT(*) as count FROM payments WHERE date(payment_date) = date('now')").get()
+      students_today: safeGet(
+        () =>
+          db
+            .prepare(
+              `SELECT COUNT(*) as count FROM students
+               WHERE institution_id = ? AND date(created_at) = date('now')`
+            )
+            .get(iid),
+        { count: 0 }
+      ),
+      attendance_today: safeGet(
+        () =>
+          db
+            .prepare(
+              `SELECT COUNT(*) as count FROM student_attendance sa
+               JOIN attendance_sessions a ON sa.attendance_session_id = a.id
+               WHERE sa.institution_id = ? AND a.date = date('now')`
+            )
+            .get(iid),
+        { count: 0 }
+      ),
+      payments_today: safeGet(
+        () =>
+          db
+            .prepare(
+              `SELECT COUNT(*) as count FROM payments
+               WHERE institution_id = ? AND date(payment_date) = date('now')`
+            )
+            .get(iid),
+        { count: 0 }
+      ),
     };
 
     res.json({
-      database_size: dbSize?.size || 0,
+      database_size: (dbSize as any)?.size || 0,
       tables_count: tables.length,
       recent_activity: recentActivity,
-      status: 'healthy'
+      status: 'healthy',
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

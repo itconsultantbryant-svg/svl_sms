@@ -83,18 +83,22 @@ academicsRouter.post('/terms', authorize('platform_admin', 'institution_admin'),
     res.status(400).json({ error: 'Session, name, start date, and end date are required' });
     return;
   }
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Institution context required' });
+    return;
+  }
 
   const db = getDatabase();
   const id = generateId();
 
   if (is_current) {
-    db.prepare('UPDATE terms SET is_current = 0 WHERE session_id = ?').run(session_id);
+    db.prepare('UPDATE terms SET is_current = 0 WHERE session_id = ? AND institution_id = ?').run(session_id, req.institution_id);
   }
 
   db.prepare(`
-    INSERT INTO terms (id, session_id, name, start_date, end_date, is_current)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, session_id, name, start_date, end_date, is_current ? 1 : 0);
+    INSERT INTO terms (id, institution_id, session_id, name, start_date, end_date, is_current)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(id, req.institution_id, session_id, name, start_date, end_date, is_current ? 1 : 0);
 
   res.status(201).json({ id, message: 'Term created successfully' });
 });
@@ -129,14 +133,35 @@ academicsRouter.post('/classes', authorize('platform_admin', 'institution_admin'
     res.status(400).json({ error: 'Class name is required' });
     return;
   }
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Institution context required' });
+    return;
+  }
 
   const db = getDatabase();
   const id = generateId();
 
+  let resolvedBranch = branch_id || req.user?.branch_id || null;
+  if (!resolvedBranch) {
+    const main = db
+      .prepare(`SELECT id FROM branches WHERE institution_id = ? AND is_active = 1 ORDER BY is_main DESC LIMIT 1`)
+      .get(req.institution_id) as any;
+    resolvedBranch = main?.id || null;
+  }
+
   db.prepare(`
-    INSERT INTO classes (id, branch_id, name, numeric_name, description, capacity, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, branch_id || req.user?.branch_id || null, name, numeric_name || null, description || null, capacity || null, sort_order || 0);
+    INSERT INTO classes (id, institution_id, branch_id, name, numeric_name, description, capacity, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    req.institution_id,
+    resolvedBranch,
+    name,
+    numeric_name || null,
+    description || null,
+    capacity || null,
+    sort_order || 0
+  );
 
   res.status(201).json({ id, message: 'Class created successfully' });
 });
@@ -151,8 +176,8 @@ academicsRouter.put('/classes/:id', authorize('platform_admin', 'institution_adm
     description = COALESCE(?, description), capacity = COALESCE(?, capacity),
     sort_order = COALESCE(?, sort_order), is_active = COALESCE(?, is_active),
     updated_at = datetime('now')
-    WHERE id = ?
-  `).run(name, numeric_name, description, capacity, sort_order, is_active, id);
+    WHERE id = ? AND institution_id = ?
+  `).run(name, numeric_name, description, capacity, sort_order, is_active, id, req.institution_id);
 
   res.json({ message: 'Class updated successfully' });
 });
@@ -190,10 +215,16 @@ academicsRouter.post('/sections', authorize('platform_admin', 'institution_admin
     res.status(400).json({ error: 'Class and section name are required' });
     return;
   }
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Institution context required' });
+    return;
+  }
 
   const db = getDatabase();
   const id = generateId();
-  db.prepare('INSERT INTO sections (id, class_id, name, capacity) VALUES (?, ?, ?, ?)').run(id, class_id, name, capacity || null);
+  db.prepare(
+    'INSERT INTO sections (id, institution_id, class_id, name, capacity) VALUES (?, ?, ?, ?, ?)'
+  ).run(id, req.institution_id, class_id, name, capacity || null);
   res.status(201).json({ id, message: 'Section created successfully' });
 });
 
@@ -259,10 +290,12 @@ academicsRouter.post('/class-subjects', authorize('platform_admin', 'institution
   }
 
   const db = getDatabase();
-  const insert = db.prepare('INSERT OR IGNORE INTO class_subjects (id, class_id, subject_id, session_id) VALUES (?, ?, ?, ?)');
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO class_subjects (id, institution_id, class_id, subject_id, session_id) VALUES (?, ?, ?, ?, ?)'
+  );
   const transaction = db.transaction(() => {
     for (const subjectId of subject_ids) {
-      insert.run(generateId(), class_id, subjectId, session_id);
+      insert.run(generateId(), req.institution_id, class_id, subjectId, session_id);
     }
   });
   transaction();

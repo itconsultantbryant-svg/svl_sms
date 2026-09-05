@@ -602,14 +602,14 @@ platformAdminRouter.get('/dashboard/stats', (req: AuthRequest, res: Response) =>
       (SELECT COUNT(*) FROM licenses WHERE status = 'active') as active_licenses
   `).get() as any;
 
-  const totalRevenue = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount_paid),0) as v FROM fee_payments`).get() as any).v);
+  const totalRevenue = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE status = 'completed'`).get() as any).v);
   const monthlyRevenue = safe(() => (db.prepare(`
-    SELECT COALESCE(SUM(amount_paid),0) as v FROM fee_payments
-    WHERE strftime('%Y-%m', payment_date) = strftime('%Y-%m', 'now')
+    SELECT COALESCE(SUM(amount),0) as v FROM payments
+    WHERE status = 'completed' AND strftime('%Y-%m', payment_date) = strftime('%Y-%m', 'now')
   `).get() as any).v);
   const monthlyExpense = safe(() => (db.prepare(`
-    SELECT COALESCE(SUM(amount),0) as v FROM account_transactions
-    WHERE type = 'expense' AND strftime('%Y-%m', transaction_date) = strftime('%Y-%m', 'now')
+    SELECT COALESCE(SUM(amount),0) as v FROM expenses
+    WHERE strftime('%Y-%m', date) = strftime('%Y-%m', 'now')
   `).get() as any).v);
 
   const feeSummary = [];
@@ -618,8 +618,8 @@ platformAdminRouter.get('/dashboard/stats', (req: AuthRequest, res: Response) =>
     const year = new Date().getFullYear();
     const startDate = `${year}-${month}-01`;
     const endDate = i < 11 ? `${year}-${String(i + 2).padStart(2, '0')}-01` : `${year + 1}-01-01`;
-    const total = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM fee_invoices WHERE due_date >= ? AND due_date < ?`).get(startDate, endDate) as any).v);
-    const collected = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount_paid),0) as v FROM fee_payments WHERE payment_date >= ? AND payment_date < ?`).get(startDate, endDate) as any).v);
+    const total = safe(() => (db.prepare(`SELECT COALESCE(SUM(total_amount),0) as v FROM invoices WHERE due_date >= ? AND due_date < ?`).get(startDate, endDate) as any).v);
+    const collected = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE status = 'completed' AND payment_date >= ? AND payment_date < ?`).get(startDate, endDate) as any).v);
     feeSummary.push({ month: i + 1, total, collected, remaining: Math.max(0, Number(total) - Number(collected)) });
   }
 

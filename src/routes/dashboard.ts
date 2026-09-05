@@ -91,7 +91,7 @@ dashboardRouter.get('/recent-admissions', (req: AuthRequest, res: Response) => {
 
 dashboardRouter.get('/fee-summary', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const institutionFilter = getInstitutionFilter(req);
+  const iid = req.institution_id;
 
   try {
     const monthly: any[] = [];
@@ -104,19 +104,19 @@ dashboardRouter.get('/fee-summary', (req: AuthRequest, res: Response) => {
       let total = 0, collected = 0;
       try {
         const totalRow = db.prepare(`
-          SELECT COALESCE(SUM(amount), 0) as total FROM fee_invoices
-          WHERE ${institutionFilter} AND due_date >= ? AND due_date < ?
-        `).get(startDate, endDate) as any;
+          SELECT COALESCE(SUM(total_amount), 0) as total FROM invoices
+          WHERE institution_id = ? AND due_date >= ? AND due_date < ?
+        `).get(iid, startDate, endDate) as any;
         total = totalRow?.total || 0;
 
         const collectedRow = db.prepare(`
-          SELECT COALESCE(SUM(amount_paid), 0) as collected FROM fee_payments
-          WHERE ${institutionFilter} AND payment_date >= ? AND payment_date < ?
-        `).get(startDate, endDate) as any;
+          SELECT COALESCE(SUM(amount), 0) as collected FROM payments
+          WHERE institution_id = ? AND status = 'completed' AND payment_date >= ? AND payment_date < ?
+        `).get(iid, startDate, endDate) as any;
         collected = collectedRow?.collected || 0;
       } catch (e) {}
 
-      monthly.push({ total, collected, remaining: total - collected });
+      monthly.push({ total, collected, remaining: Math.max(0, total - collected) });
     }
 
     res.json({ monthly });
@@ -127,7 +127,7 @@ dashboardRouter.get('/fee-summary', (req: AuthRequest, res: Response) => {
 
 dashboardRouter.get('/finance-summary', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const institutionFilter = getInstitutionFilter(req);
+  const iid = req.institution_id;
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -136,18 +136,22 @@ dashboardRouter.get('/finance-summary', (req: AuthRequest, res: Response) => {
 
   let income = 0, expense = 0;
   try {
-    const incomeRow = db.prepare(`
-      SELECT COALESCE(SUM(amount_paid), 0) as total FROM fee_payments
-      WHERE ${institutionFilter} AND payment_date >= ? AND payment_date < ?
-    `).get(startDate, endDate) as any;
-    income = incomeRow?.total || 0;
+    const feeRow = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total FROM payments
+      WHERE institution_id = ? AND status = 'completed' AND payment_date >= ? AND payment_date < ?
+    `).get(iid, startDate, endDate) as any;
+    const otherRow = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total FROM income
+      WHERE institution_id = ? AND date >= ? AND date < ?
+    `).get(iid, startDate, endDate) as any;
+    income = (feeRow?.total || 0) + (otherRow?.total || 0);
   } catch (e) {}
 
   try {
     const expenseRow = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM account_transactions
-      WHERE ${institutionFilter} AND type = 'expense' AND transaction_date >= ? AND transaction_date < ?
-    `).get(startDate, endDate) as any;
+      SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+      WHERE institution_id = ? AND date >= ? AND date < ?
+    `).get(iid, startDate, endDate) as any;
     expense = expenseRow?.total || 0;
   } catch (e) {}
 
@@ -156,7 +160,7 @@ dashboardRouter.get('/finance-summary', (req: AuthRequest, res: Response) => {
 
 dashboardRouter.get('/attendance-weekly', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const institutionFilter = getInstitutionFilter(req);
+  const iid = req.institution_id;
 
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
   const days: any[] = [];
@@ -174,15 +178,17 @@ dashboardRouter.get('/attendance-weekly', (req: AuthRequest, res: Response) => {
     let present = 0, absent = 0;
     try {
       const presentRow = db.prepare(`
-        SELECT COUNT(*) as count FROM attendance
-        WHERE ${institutionFilter} AND date = ? AND status = 'present'
-      `).get(dateStr) as any;
+        SELECT COUNT(*) as count FROM student_attendance sa
+        JOIN attendance_sessions a ON sa.attendance_session_id = a.id
+        WHERE sa.institution_id = ? AND a.date = ? AND sa.status = 'present'
+      `).get(iid, dateStr) as any;
       present = presentRow?.count || 0;
 
       const absentRow = db.prepare(`
-        SELECT COUNT(*) as count FROM attendance
-        WHERE ${institutionFilter} AND date = ? AND status = 'absent'
-      `).get(dateStr) as any;
+        SELECT COUNT(*) as count FROM student_attendance sa
+        JOIN attendance_sessions a ON sa.attendance_session_id = a.id
+        WHERE sa.institution_id = ? AND a.date = ? AND sa.status = 'absent'
+      `).get(iid, dateStr) as any;
       absent = absentRow?.count || 0;
     } catch (e) {}
 
@@ -200,18 +206,18 @@ dashboardRouter.get('/finance', (req: AuthRequest, res: Response) => {
     try { return fn(); } catch { return fallback; }
   };
 
-  const totalInvoiced = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM fee_invoices WHERE institution_id = ?`).get(iid) as any).v);
-  const totalCollected = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount_paid),0) as v FROM fee_payments WHERE institution_id = ?`).get(iid) as any).v);
+  const totalInvoiced = safe(() => (db.prepare(`SELECT COALESCE(SUM(total_amount),0) as v FROM invoices WHERE institution_id = ?`).get(iid) as any).v);
+  const totalCollected = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE institution_id = ? AND status = 'completed'`).get(iid) as any).v);
   const outstanding = Math.max(0, Number(totalInvoiced) - Number(totalCollected));
-  const unpaidInvoices = safe(() => (db.prepare(`SELECT COUNT(*) as v FROM fee_invoices WHERE institution_id = ? AND status IN ('unpaid','partial','overdue')`).get(iid) as any).v);
-  const paymentsToday = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount_paid),0) as v FROM fee_payments WHERE institution_id = ? AND DATE(payment_date) = DATE('now')`).get(iid) as any).v);
-  const expenseMonth = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM account_transactions WHERE institution_id = ? AND type = 'expense' AND strftime('%Y-%m', transaction_date) = strftime('%Y-%m','now')`).get(iid) as any).v);
-  const incomeMonth = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount_paid),0) as v FROM fee_payments WHERE institution_id = ? AND strftime('%Y-%m', payment_date) = strftime('%Y-%m','now')`).get(iid) as any).v);
+  const unpaidInvoices = safe(() => (db.prepare(`SELECT COUNT(*) as v FROM invoices WHERE institution_id = ? AND status IN ('unpaid','partial','overdue')`).get(iid) as any).v);
+  const paymentsToday = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE institution_id = ? AND status = 'completed' AND DATE(payment_date) = DATE('now')`).get(iid) as any).v);
+  const expenseMonth = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM expenses WHERE institution_id = ? AND strftime('%Y-%m', date) = strftime('%Y-%m','now')`).get(iid) as any).v);
+  const incomeMonth = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE institution_id = ? AND status = 'completed' AND strftime('%Y-%m', payment_date) = strftime('%Y-%m','now')`).get(iid) as any).v);
 
   const recentPayments = safe(() => db.prepare(`
-    SELECT p.id, p.amount_paid, p.payment_date, p.payment_method,
+    SELECT p.id, p.amount as amount_paid, p.payment_date, p.payment_method,
            s.first_name || ' ' || s.last_name as student_name, s.admission_number
-    FROM fee_payments p
+    FROM payments p
     LEFT JOIN students s ON s.id = p.student_id
     WHERE p.institution_id = ?
     ORDER BY p.payment_date DESC LIMIT 10
@@ -299,8 +305,8 @@ dashboardRouter.get('/student', (req: AuthRequest, res: Response) => {
         AND NOT EXISTS (SELECT 1 FROM homework_submissions hs WHERE hs.assignment_id = ha.id AND hs.student_id = ?)
     `).get(student?.class_id, iid, student?.id) as any)?.v || 0),
     attendance_pct: safe(() => {
-      const total = (db.prepare(`SELECT COUNT(*) as v FROM attendance WHERE student_id = ?`).get(student?.id) as any)?.v || 0;
-      const present = (db.prepare(`SELECT COUNT(*) as v FROM attendance WHERE student_id = ? AND status = 'present'`).get(student?.id) as any)?.v || 0;
+      const total = (db.prepare(`SELECT COUNT(*) as v FROM student_attendance WHERE student_id = ?`).get(student?.id) as any)?.v || 0;
+      const present = (db.prepare(`SELECT COUNT(*) as v FROM student_attendance WHERE student_id = ? AND status = 'present'`).get(student?.id) as any)?.v || 0;
       return total ? Math.round((present / total) * 100) : 0;
     }),
     recent_grades: safe(() => db.prepare(`
@@ -341,7 +347,7 @@ dashboardRouter.get('/parent', (req: AuthRequest, res: Response) => {
       if (!ids.length) return 0;
       const placeholders = ids.map(() => '?').join(',');
       return (db.prepare(`
-        SELECT COALESCE(SUM(amount - COALESCE(amount_paid,0)),0) as v FROM fee_invoices
+        SELECT COALESCE(SUM(balance),0) as v FROM invoices
         WHERE student_id IN (${placeholders}) AND status IN ('unpaid','partial','overdue')
       `).get(...ids) as any)?.v || 0;
     }),

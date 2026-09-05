@@ -317,8 +317,8 @@ feesRouter.get('/due', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
   const { class_id, session_id } = req.query as any;
 
-  let where = "WHERE i.status IN ('unpaid', 'partial', 'overdue')";
-  const params: any[] = [];
+  let where = "WHERE i.institution_id = ? AND i.status IN ('unpaid', 'partial', 'overdue')";
+  const params: any[] = [req.institution_id];
   if (class_id) { where += ' AND s.class_id = ?'; params.push(class_id); }
   if (session_id) { where += ' AND i.session_id = ?'; params.push(session_id); }
 
@@ -341,17 +341,17 @@ feesRouter.get('/due', (req: AuthRequest, res: Response) => {
 // Fee collection summary
 feesRouter.get('/summary', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const { session_id, term_id, start_date, end_date } = req.query as any;
+  const { session_id, start_date, end_date } = req.query as any;
 
-  let paymentWhere = "WHERE p.status = 'completed'";
-  const params: any[] = [];
+  let paymentWhere = "WHERE p.institution_id = ? AND p.status = 'completed'";
+  const params: any[] = [req.institution_id];
   if (start_date) { paymentWhere += ' AND p.payment_date >= ?'; params.push(start_date); }
   if (end_date) { paymentWhere += ' AND p.payment_date <= ?'; params.push(end_date); }
 
   const totalCollected = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payments p ${paymentWhere}`).get(...params) as any;
 
-  let invoiceWhere = 'WHERE 1=1';
-  const invoiceParams: any[] = [];
+  let invoiceWhere = 'WHERE institution_id = ?';
+  const invoiceParams: any[] = [req.institution_id];
   if (session_id) { invoiceWhere += ' AND session_id = ?'; invoiceParams.push(session_id); }
 
   const invoiceStats = db.prepare(`
