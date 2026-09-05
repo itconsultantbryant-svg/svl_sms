@@ -13,24 +13,52 @@ certificatesRouter.use(requireTenant);
 // Templates
 certificatesRouter.get('/templates', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const templates = db.prepare('SELECT * FROM certificate_templates WHERE is_active = 1 ORDER BY name').all();
+  const templates = db.prepare(`
+    SELECT * FROM certificate_templates
+    WHERE institution_id = ? AND is_active = 1
+    ORDER BY name
+  `).all(req.institution_id);
   res.json(templates);
 });
 
 certificatesRouter.post('/templates', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
-  const { name, type, content, header, footer } = req.body;
-  if (!name || !content) { res.status(400).json({ error: 'Name and content are required' }); return; }
-  const db = getDatabase();
-  const id = generateId();
-  db.prepare(`INSERT INTO certificate_templates (id, name, type, content, header, footer) VALUES (?, ?, ?, ?, ?, ?)`).run(id, name, type || 'custom', content, header || null, footer || null);
-  res.status(201).json({ id, message: 'Template created' });
+  try {
+    const { name, type, content, header, footer } = req.body;
+    if (!name || !content) {
+      res.status(400).json({ error: 'Name and content are required' });
+      return;
+    }
+    if (!req.institution_id) {
+      res.status(400).json({ error: 'Institution context required' });
+      return;
+    }
+
+    const allowedTypes = new Set(['transfer', 'character', 'bonafide', 'completion', 'custom']);
+    const resolvedType = allowedTypes.has(type) ? type : 'custom';
+
+    const db = getDatabase();
+    const id = generateId();
+    db.prepare(`
+      INSERT INTO certificate_templates (id, institution_id, name, type, content, header, footer)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, req.institution_id, name, resolvedType, content, header || null, footer || null);
+    res.status(201).json({ id, message: 'Template created' });
+  } catch (err: any) {
+    console.error('Certificate template create error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 certificatesRouter.put('/templates/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const { name, type, content, header, footer, is_active } = req.body;
   const db = getDatabase();
-  db.prepare(`UPDATE certificate_templates SET name = COALESCE(?, name), type = COALESCE(?, type), content = COALESCE(?, content), header = COALESCE(?, header), footer = COALESCE(?, footer), is_active = COALESCE(?, is_active) WHERE id = ?`).run(name, type, content, header, footer, is_active, id);
+  db.prepare(`
+    UPDATE certificate_templates SET
+      name = COALESCE(?, name), type = COALESCE(?, type), content = COALESCE(?, content),
+      header = COALESCE(?, header), footer = COALESCE(?, footer), is_active = COALESCE(?, is_active)
+    WHERE id = ? AND institution_id = ?
+  `).run(name, type, content, header, footer, is_active, id, req.institution_id);
   res.json({ message: 'Template updated' });
 });
 
@@ -42,7 +70,7 @@ certificatesRouter.post('/generate', authorize('platform_admin', 'institution_ad
     return;
   }
   const db = getDatabase();
-  const template = db.prepare('SELECT * FROM certificate_templates WHERE id = ?').get(template_id) as any;
+  const template = db.prepare('SELECT * FROM certificate_templates WHERE id = ? AND institution_id = ?').get(template_id, req.institution_id) as any;
   if (!template) { res.status(404).json({ error: 'Template not found' }); return; }
 
   const student = db.prepare(`
@@ -50,8 +78,8 @@ certificatesRouter.post('/generate', authorize('platform_admin', 'institution_ad
     FROM students s
     LEFT JOIN classes c ON s.class_id = c.id
     LEFT JOIN sections sec ON s.section_id = sec.id
-    WHERE s.id = ?
-  `).get(student_id) as any;
+    WHERE s.id = ? AND s.institution_id = ?
+  `).get(student_id, req.institution_id) as any;
   if (!student) { res.status(404).json({ error: 'Student not found' }); return; }
 
   const id = generateId();
@@ -66,7 +94,10 @@ certificatesRouter.post('/generate', authorize('platform_admin', 'institution_ad
     .replace(/\{\{date\}\}/g, issued_date)
     .replace(/\{\{certificate_number\}\}/g, certNumber);
 
-  db.prepare(`INSERT INTO certificates (id, template_id, student_id, certificate_number, issued_date, content, generated_by) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, template_id, student_id, certNumber, issued_date, finalContent, req.user?.id || null);
+  db.prepare(`
+    INSERT INTO certificates (id, institution_id, template_id, student_id, certificate_number, issued_date, content, generated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, req.institution_id, template_id, student_id, certNumber, issued_date, finalContent, req.user?.id || null);
   res.status(201).json({ id, certificate_number: certNumber, message: 'Certificate generated' });
 });
 
@@ -76,8 +107,8 @@ certificatesRouter.get('/', (req: AuthRequest, res: Response) => {
   const { page = '1', limit = '20', student_id, type } = req.query as any;
   const { limit: lim, offset } = paginate(parseInt(page), parseInt(limit));
 
-  let where = 'WHERE 1=1';
-  const params: any[] = [];
+  let where = 'WHERE c.institution_id = ?';
+  const params: any[] = [req.institution_id];
   if (student_id) { where += ' AND c.student_id = ?'; params.push(student_id); }
   if (type) { where += ' AND ct.type = ?'; params.push(type); }
 
@@ -106,11 +137,11 @@ certificatesRouter.get('/:id', (req: AuthRequest, res: Response) => {
     LEFT JOIN students s ON c.student_id = s.id
     LEFT JOIN classes cl ON s.class_id = cl.id
     LEFT JOIN sections sec ON s.section_id = sec.id
-    WHERE c.id = ?
-  `).get(id);
+    WHERE c.id = ? AND c.institution_id = ?
+  `).get(id, req.institution_id);
   if (!cert) { res.status(404).json({ error: 'Certificate not found' }); return; }
 
-  const institution = db.prepare('SELECT * FROM institutions LIMIT 1').get();
+  const institution = db.prepare('SELECT * FROM institutions WHERE id = ?').get(req.institution_id);
   res.json({ certificate: cert, institution });
 });
 

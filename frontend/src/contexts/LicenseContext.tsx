@@ -55,20 +55,60 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await api.get('/licensing/check');
-      const { mode: licenseMode, expiry: expiryStr, plan_tier, features: licenseFeatures } = res.data;
+      const token = localStorage.getItem('svl_token');
+      if (!token) {
+        setModeState(null);
+        setIsLoading(false);
+        return;
+      }
 
-      const expiryDate = new Date(expiryStr);
+      const rawUser = localStorage.getItem('svl_user');
+      if (rawUser) {
+        try {
+          const u = JSON.parse(rawUser);
+          if (u?.user_type === 'platform_admin') {
+            setModeState('production');
+            setPlanTier('enterprise');
+            setFeatures(DEFAULT_PRODUCTION_FEATURES);
+            setExpiry(null);
+            setDaysRemaining(null);
+            setIsExpired(false);
+            setError(null);
+            setIsLoading(false);
+            return;
+          }
+        } catch {}
+      }
+
+      const res = await api.get('/licensing/check');
+      const licenseMode = res.data.mode;
+      const expiryStr = res.data.expiry;
+      const plan = res.data.plan_tier || res.data.planTier;
+      const licenseFeatures = res.data.features;
+
+      const expiryDate = expiryStr ? new Date(expiryStr) : null;
       setModeState(licenseMode);
       setExpiry(expiryDate);
-      setPlanTier(plan_tier);
+      setPlanTier(plan);
       setFeatures(licenseFeatures || (licenseMode === 'demo' ? DEFAULT_DEMO_FEATURES : DEFAULT_PRODUCTION_FEATURES));
 
-      const days = calculateDaysRemaining(expiryDate);
-      setDaysRemaining(days);
-      setIsExpired(days < 0);
+      if (expiryDate) {
+        const days = calculateDaysRemaining(expiryDate);
+        setDaysRemaining(days);
+        setIsExpired(days < 0);
+      } else {
+        setDaysRemaining(null);
+        setIsExpired(false);
+      }
     } catch (err: any) {
       const status = err?.response?.status;
+      // Not logged in yet — ignore quietly
+      if (status === 401) {
+        setModeState(null);
+        setError(null);
+        setIsLoading(false);
+        return;
+      }
       // 403 (License required) or 404 (No license): show SetupWizard, not demo fallback
       if (status === 403 || status === 404) {
         console.log('No active license — showing setup wizard');
@@ -98,7 +138,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     }
   };
-
   // Re-check license when user changes (login/logout) — listen for custom event
   useEffect(() => {
     const onUserChanged = () => {

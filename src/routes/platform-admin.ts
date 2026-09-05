@@ -414,6 +414,17 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
       `${currentYear}-09-01`,
       `${currentYear + 1}-07-31`
     );
+
+    // 6. Auto-issue a 1-year cloud production license so school admin can log in online
+    const licenseId = generateId();
+    const expiry = new Date();
+    expiry.setFullYear(expiry.getFullYear() + 1);
+    const licenseKey = `SVL-CLOUD-${String(institution_code).trim().toUpperCase().slice(0, 8)}-${Date.now().toString(36).toUpperCase()}`;
+    db.prepare(`
+      INSERT INTO licenses (
+        id, institution_id, license_key, mode, plan_tier, expiry_date, status, activated_at
+      ) VALUES (?, ?, ?, 'production', 'standard', ?, 'active', datetime('now'))
+    `).run(licenseId, institutionId, licenseKey, expiry.toISOString().split('T')[0]);
   });
 
   try {

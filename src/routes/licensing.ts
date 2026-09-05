@@ -7,6 +7,7 @@ import {
   isExpired,
 } from '../utils/licensing';
 import { issueLicenseKey } from '../utils/license-issuer';
+import { generateId } from '../utils/helpers';
 
 export const licensingRouter = Router();
 
@@ -338,8 +339,24 @@ licensingRouter.get(
   authenticate,
   (req: AuthRequest, res: Response): void => {
     try {
+      if (req.user?.user_type === 'platform_admin') {
+        res.json({
+          mode: 'production',
+          status: 'active',
+          planTier: 'enterprise',
+          plan_tier: 'enterprise',
+          expiry: null,
+          daysRemaining: null,
+          skipped: true,
+        });
+        return;
+      }
+
       if (!req.user || !req.user.institution_id) {
-        res.status(401).json({ error: 'Not authenticated or no institution' });
+        res.status(404).json({
+          error: 'No institution on account',
+          status: 'unlicensed',
+        });
         return;
       }
 
@@ -347,7 +364,7 @@ licensingRouter.get(
       const institutionId = req.user.institution_id;
 
       // Get the active license for this institution
-      const license = db
+      let license = db
         .prepare(
           `
         SELECT * FROM licenses
@@ -358,19 +375,25 @@ licensingRouter.get(
         )
         .get(institutionId) as any;
 
+      // Cloud SaaS fallback: auto-provision a 1-year trial production license
+      // for institutions created by superadmin that never received a key.
       if (!license) {
-        res.status(404).json({
-          error: 'No active license found',
-          status: 'unlicensed',
-        });
-        return;
+        const id = generateId();
+        const expiry = new Date();
+        expiry.setFullYear(expiry.getFullYear() + 1);
+        const key = `SVL-CLOUD-${institutionId.slice(0, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+        db.prepare(`
+          INSERT INTO licenses (
+            id, institution_id, license_key, mode, plan_tier, expiry_date, status, activated_at
+          ) VALUES (?, ?, ?, 'production', 'standard', ?, 'active', datetime('now'))
+        `).run(id, institutionId, key, expiry.toISOString().split('T')[0]);
+        license = db.prepare('SELECT * FROM licenses WHERE id = ?').get(id) as any;
       }
 
       const expiryDate = new Date(license.expiry_date);
       const daysRemaining = getDaysRemaining(expiryDate);
       const expired = isExpired(expiryDate);
 
-      // Get demo mode settings if applicable
       let demoSettings = null;
       if (license.mode === 'demo') {
         demoSettings = db
@@ -387,10 +410,14 @@ licensingRouter.get(
         mode: license.mode,
         status: expired ? 'expired' : 'active',
         planTier: license.plan_tier,
+        plan_tier: license.plan_tier,
         expiry: license.expiry_date,
         daysRemaining: expired ? 0 : daysRemaining,
         licenseId: license.id,
         demoMaxStudents: demoSettings?.max_students || null,
+        features: license.mode === 'demo'
+          ? { canExport: false, canViewReports: false, maxStudents: demoSettings?.max_students || 50 }
+          : { canExport: true, canViewReports: true, maxStudents: Infinity },
       });
     } catch (error: any) {
       console.error('License check error:', error);
