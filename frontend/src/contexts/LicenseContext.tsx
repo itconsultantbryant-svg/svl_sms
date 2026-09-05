@@ -217,6 +217,11 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       try {
         const token = localStorage.getItem('svl_token');
         if (!token) return;
+        const rawUser = localStorage.getItem('svl_user');
+        if (rawUser) {
+          const u = JSON.parse(rawUser);
+          if (u?.user_type === 'platform_admin') return;
+        }
         let machineId = localStorage.getItem('svl_machine_id');
         if (!machineId) {
           machineId = 'web-' + crypto.randomUUID();

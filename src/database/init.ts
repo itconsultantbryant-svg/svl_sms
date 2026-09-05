@@ -22,23 +22,18 @@ function ensureColumn(database: Database.Database, table: string, column: string
   }
 }
 
-function migrateInstitutionBranding(database: Database.Database): void {
-  ensureColumn(database, 'institutions', 'primary_color', "TEXT DEFAULT '#1e40af'");
-  ensureColumn(database, 'institutions', 'secondary_color', "TEXT DEFAULT '#3b82f6'");
-  ensureColumn(database, 'institutions', 'accent_color', "TEXT DEFAULT '#f59e0b'");
+export function migrateInstitutionBranding(database?: Database.Database): void {
+  const target = database || getDatabase();
+  ensureColumn(target, 'institutions', 'primary_color', "TEXT DEFAULT '#1e40af'");
+  ensureColumn(target, 'institutions', 'secondary_color', "TEXT DEFAULT '#3b82f6'");
+  ensureColumn(target, 'institutions', 'accent_color', "TEXT DEFAULT '#f59e0b'");
 }
 
 export function initializeDatabase(): void {
   const database = getDatabase();
 
-  // Execute consolidated multi-tenant schema V2
-  // This includes ALL tables from all phases with institution_id for tenant isolation
   database.exec(schemaV2Consolidated);
-
-  // Execute homework & assignments schema
   database.exec(homeworkAssignmentsSchema);
-
-  // Additive migrations for existing DBs
   migrateInstitutionBranding(database);
 
   console.log('✓ Multi-tenant database initialized successfully');

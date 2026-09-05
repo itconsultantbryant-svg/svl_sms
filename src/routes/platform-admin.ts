@@ -1,11 +1,29 @@
 import { Router, Response } from 'express';
-import { getDatabase } from '../database/init';
+import { getDatabase, migrateInstitutionBranding } from '../database/init';
 import { AuthRequest } from '../middleware/auth';
 import { platformAdminOnly } from '../middleware/tenant';
 import { generateId, paginate, buildSearchQuery } from '../utils/helpers';
 import bcrypt from 'bcryptjs';
 
 export const platformAdminRouter = Router();
+
+const ALLOWED_INSTITUTION_TYPES = new Set([
+  'primary', 'secondary', 'high_school', 'college', 'university',
+  'vocational', 'training', 'coaching', 'nursery', 'international', 'religious', 'other',
+]);
+
+/** Map UI aliases to values allowed by the institutions.institution_type CHECK constraint */
+function normalizeInstitutionType(raw?: string): string {
+  const value = (raw || 'secondary').toLowerCase().trim();
+  const aliases: Record<string, string> = {
+    technical: 'vocational',
+    tech: 'vocational',
+    highschool: 'high_school',
+    'high school': 'high_school',
+  };
+  const mapped = aliases[value] || value;
+  return ALLOWED_INSTITUTION_TYPES.has(mapped) ? mapped : 'other';
+}
 
 // Apply platform admin restriction to ALL routes
 platformAdminRouter.use(platformAdminOnly);
@@ -156,7 +174,33 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
     return;
   }
 
+  const adminUsername = String(admin_user.username || '').trim();
+  const adminEmail = String(admin_user.email || '').trim();
+  const adminFirst = String(admin_user.first_name || '').trim() || 'School';
+  const adminLast = String(admin_user.last_name || '').trim() || 'Admin';
+  const adminPassword = String(admin_user.password || 'admin123');
+
+  if (!adminUsername || !adminEmail) {
+    res.status(400).json({
+      error: 'Admin username and email are required',
+      required: ['admin_user.username', 'admin_user.email']
+    });
+    return;
+  }
+
+  if (typeof logo === 'string' && logo.length > 2_500_000) {
+    res.status(400).json({ error: 'Logo is too large. Please upload an image under 1.5MB.' });
+    return;
+  }
+
   const db = getDatabase();
+
+  // Ensure branding columns exist on older production DBs
+  try {
+    migrateInstitutionBranding(db);
+  } catch (e) {
+    console.warn('Branding migration warning:', e);
+  }
 
   // Check if code already exists
   const existing = db.prepare('SELECT id FROM institutions WHERE institution_code = ?').get(institution_code);
@@ -165,51 +209,107 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
     return;
   }
 
+  const usernameTaken = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)').get(adminUsername);
+  if (usernameTaken) {
+    res.status(409).json({ error: `Admin username "${adminUsername}" is already taken. Choose a different username.` });
+    return;
+  }
+
+  const resolvedType = normalizeInstitutionType(institution_type);
+  const allowedPlans = new Set(['trial', 'basic', 'standard', 'premium', 'enterprise']);
+  const resolvedPlan = allowedPlans.has(subscription_plan) ? subscription_plan : 'trial';
+
   const institutionId = generateId();
   const mainBranchId = generateId();
   const adminUserId = generateId();
   const institutionAdminRoleId = generateId();
 
   const transaction = db.transaction(() => {
-    // 1. Create institution
-    db.prepare(`
-      INSERT INTO institutions (
-        id, institution_code, institution_name, institution_type,
-        email, phone, mobile, website, address, county, city, postal_code, country,
-        motto, logo, primary_color, secondary_color, accent_color,
-        currency, currency_symbol, timezone,
-        subscription_plan, subscription_status, subscription_start_date,
-        max_students, max_staff, is_active, setup_completed, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?)
-    `).run(
-      institutionId,
-      institution_code,
-      institution_name,
-      institution_type || 'secondary',
-      email,
-      phone,
-      mobile,
-      website || null,
-      address || null,
-      county || null,
-      city || null,
-      postal_code || null,
-      country || 'Liberia',
-      motto || null,
-      logo || null,
-      primary_color || '#1e40af',
-      secondary_color || '#3b82f6',
-      accent_color || '#f59e0b',
-      currency || 'USD',
-      '$',
-      timezone || 'Africa/Monrovia',
-      subscription_plan || 'trial',
-      'active',
-      new Date().toISOString().split('T')[0],
-      max_students || 500,
-      max_staff || 30,
-      req.user!.id
+    // Detect branding columns so older Render DBs still accept creates
+    const instCols = new Set(
+      (db.prepare(`PRAGMA table_info(institutions)`).all() as Array<{ name: string }>).map((c) => c.name)
     );
+    const hasBrandColors =
+      instCols.has('primary_color') &&
+      instCols.has('secondary_color') &&
+      instCols.has('accent_color');
+
+    if (hasBrandColors) {
+      db.prepare(`
+        INSERT INTO institutions (
+          id, institution_code, institution_name, institution_type,
+          email, phone, mobile, website, address, county, city, postal_code, country,
+          motto, logo, primary_color, secondary_color, accent_color,
+          currency, currency_symbol, timezone,
+          subscription_plan, subscription_status, subscription_start_date,
+          max_students, max_staff, is_active, setup_completed, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?)
+      `).run(
+        institutionId,
+        String(institution_code).trim().toUpperCase(),
+        String(institution_name).trim(),
+        resolvedType,
+        email || null,
+        phone || null,
+        mobile || null,
+        website || null,
+        address || null,
+        county || null,
+        city || null,
+        postal_code || null,
+        country || 'Liberia',
+        motto || null,
+        logo || null,
+        primary_color || '#1e40af',
+        secondary_color || '#3b82f6',
+        accent_color || '#f59e0b',
+        currency || 'USD',
+        '$',
+        timezone || 'Africa/Monrovia',
+        resolvedPlan,
+        'active',
+        new Date().toISOString().split('T')[0],
+        max_students || 500,
+        max_staff || 30,
+        req.user!.id
+      );
+    } else {
+      db.prepare(`
+        INSERT INTO institutions (
+          id, institution_code, institution_name, institution_type,
+          email, phone, mobile, website, address, county, city, postal_code, country,
+          motto, logo,
+          currency, currency_symbol, timezone,
+          subscription_plan, subscription_status, subscription_start_date,
+          max_students, max_staff, is_active, setup_completed, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?)
+      `).run(
+        institutionId,
+        String(institution_code).trim().toUpperCase(),
+        String(institution_name).trim(),
+        resolvedType,
+        email || null,
+        phone || null,
+        mobile || null,
+        website || null,
+        address || null,
+        county || null,
+        city || null,
+        postal_code || null,
+        country || 'Liberia',
+        motto || null,
+        logo || null,
+        currency || 'USD',
+        '$',
+        timezone || 'Africa/Monrovia',
+        resolvedPlan,
+        'active',
+        new Date().toISOString().split('T')[0],
+        max_students || 500,
+        max_staff || 30,
+        req.user!.id
+      );
+    }
 
     // 2. Create main branch
     db.prepare(`
@@ -222,8 +322,8 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
       institutionId,
       'MAIN',
       'Main Campus',
-      email,
-      phone
+      email || null,
+      phone || null
     );
 
     // 3. Create institution admin + default operational roles
@@ -239,7 +339,7 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
       'Institution Administrator',
       'Full control over institution',
       'institution',
-      null
+      '[]'
     );
 
     const defaultRoles: Array<{ code: string; name: string; description: string; permissions: string[] }> = [
@@ -280,7 +380,7 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
     }
 
     // 4. Create admin user
-    const passwordHash = bcrypt.hashSync(admin_user.password || 'admin123', 10);
+    const passwordHash = bcrypt.hashSync(adminPassword, 10);
     db.prepare(`
       INSERT INTO users (
         id, institution_id, branch_id, username, email, password_hash,
@@ -290,11 +390,11 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
       adminUserId,
       institutionId,
       mainBranchId,
-      admin_user.username,
-      admin_user.email,
+      adminUsername,
+      adminEmail,
       passwordHash,
-      admin_user.first_name,
-      admin_user.last_name,
+      adminFirst,
+      adminLast,
       admin_user.phone || null,
       institutionAdminRoleId,
       'institution_admin'
@@ -319,22 +419,44 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
   try {
     transaction();
 
-    // Return credentials so superadmin can share with institution admin
     res.status(201).json({
       id: institutionId,
-      institution_code,
-      institution_name,
+      institution_code: String(institution_code).trim().toUpperCase(),
+      institution_name: String(institution_name).trim(),
       admin_user_id: adminUserId,
       admin_credentials: {
-        username: admin_user.username,
-        password: admin_user.password || 'admin123',
-        email: admin_user.email
+        username: adminUsername,
+        password: adminPassword,
+        email: adminEmail
       },
       message: 'Institution created successfully. Share these credentials with the institution administrator.'
     });
   } catch (error: any) {
     console.error('Institution creation error:', error);
-    res.status(500).json({ error: 'Failed to create institution', details: error.message });
+    const msg = String(error?.message || error);
+    if (msg.includes('UNIQUE') && msg.toLowerCase().includes('username')) {
+      res.status(409).json({ error: `Admin username "${adminUsername}" is already taken.` });
+      return;
+    }
+    if (msg.includes('UNIQUE') && msg.toLowerCase().includes('institution_code')) {
+      res.status(409).json({ error: 'Institution code already exists' });
+      return;
+    }
+    if (msg.includes('CHECK constraint') || msg.includes('constraint failed')) {
+      res.status(400).json({
+        error: 'Invalid institution data (type or plan not allowed). Try a different institution type.',
+        details: msg,
+      });
+      return;
+    }
+    if (msg.includes('no such column')) {
+      res.status(500).json({
+        error: 'Database schema is outdated. Redeploy/restart the API so migrations can run.',
+        details: msg,
+      });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to create institution', details: msg });
   }
 });
 
@@ -397,7 +519,9 @@ platformAdminRouter.put('/institutions/:id', (req: AuthRequest, res: Response) =
       updated_at = datetime('now')
     WHERE id = ?
   `).run(
-    institution_name, institution_type, email, phone, mobile, website,
+    institution_name,
+    institution_type ? normalizeInstitutionType(institution_type) : null,
+    email, phone, mobile, website,
     address, county, city, postal_code, motto, logo,
     primary_color, secondary_color, accent_color,
     currency, timezone, max_students, max_staff, is_active, id

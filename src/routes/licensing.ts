@@ -412,6 +412,12 @@ licensingRouter.post(
   authenticate,
   (req: AuthRequest, res: Response): void => {
     try {
+      // Platform admins have no tenant license — skip quietly
+      if (req.user?.user_type === 'platform_admin') {
+        res.json({ valid: true, skipped: true, reason: 'platform_admin' });
+        return;
+      }
+
       if (!req.user || !req.user.institution_id) {
         res.status(401).json({ error: 'Not authenticated or no institution' });
         return;

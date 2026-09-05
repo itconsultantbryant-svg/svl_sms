@@ -130,7 +130,9 @@ export default function InstitutionFormPage() {
       navigate('/platform-admin/institutions');
     } catch (error: any) {
       console.error('Failed to save institution:', error);
-      const message = error.response?.data?.error || 'Failed to save institution. Please try again.';
+      const message = error.response?.data?.details
+        ? `${error.response.data.error || 'Failed to save institution'}: ${error.response.data.details}`
+        : (error.response?.data?.error || 'Failed to save institution. Please try again.');
       alert(message);
     } finally {
       setLoading(false);
@@ -203,8 +205,9 @@ export default function InstitutionFormPage() {
               >
                 <option value="primary">Primary School</option>
                 <option value="secondary">Secondary School</option>
+                <option value="high_school">High School</option>
                 <option value="university">University</option>
-                <option value="technical">Technical Institute</option>
+                <option value="vocational">Technical / Vocational Institute</option>
                 <option value="other">Other</option>
               </select>
             </div>
