@@ -81,7 +81,7 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
     }
 
     // Check license status after user is authenticated
-    const license = db
+    let license = db
       .prepare(
         `
         SELECT * FROM licenses
@@ -91,6 +91,26 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
       `
       )
       .get(user.institution_id) as any;
+
+    // Online SaaS: auto-provision a cloud license for schools that never received one
+    if (!license && user.institution_id) {
+      try {
+        const { v4: uuidv4 } = require('uuid');
+        const id = uuidv4();
+        const expiry = new Date();
+        expiry.setFullYear(expiry.getFullYear() + 1);
+        const key = `SVL-CLOUD-${String(user.institution_id).slice(0, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+        db.prepare(`
+          INSERT INTO licenses (
+            id, institution_id, license_key, mode, plan_tier, expiry_date, status, activated_at
+          ) VALUES (?, ?, ?, 'production', 'standard', ?, 'active', datetime('now'))
+        `).run(id, user.institution_id, key, expiry.toISOString().split('T')[0]);
+        license = db.prepare('SELECT * FROM licenses WHERE id = ?').get(id) as any;
+        console.log('✓ Auto-provisioned cloud license for institution', user.institution_id);
+      } catch (e) {
+        console.error('Failed to auto-provision license:', e);
+      }
+    }
 
     if (license) {
       const expiryDate = new Date(license.expiry_date);
