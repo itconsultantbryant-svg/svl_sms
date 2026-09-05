@@ -285,19 +285,24 @@ export default function InstitutionFormPage() {
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    if (file.size > 2 * 1024 * 1024) {
-                      alert('Logo must be under 2MB');
+                    if (file.size > 5 * 1024 * 1024) {
+                      alert('Logo must be under 5MB');
                       return;
                     }
-                    const reader = new FileReader();
-                    reader.onload = () => setFormData((prev) => ({ ...prev, logo: String(reader.result) }));
-                    reader.readAsDataURL(file);
+                    try {
+                      const { compressImageToDataUrl } = await import('../../utils/compressImage');
+                      const dataUrl = await compressImageToDataUrl(file);
+                      setFormData((prev) => ({ ...prev, logo: dataUrl }));
+                    } catch (err: any) {
+                      alert(err?.message || 'Failed to process logo');
+                    }
                   }}
                   className="text-sm"
                 />
+                <p className="text-xs text-gray-400 mt-1">Images are compressed automatically before upload.</p>
               </div>
             </div>
             <div>

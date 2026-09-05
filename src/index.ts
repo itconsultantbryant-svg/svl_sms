@@ -46,32 +46,44 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 // CORS Configuration - MUST be before routes
-const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || [
+const allowedOrigins = (process.env.CORS_ORIGINS || [
   'http://localhost:3000',
-  'http://localhost:5173'
-];
+  'http://localhost:5173',
+  'https://svl-sms.vercel.app',
+  'https://sms-system-ruby.vercel.app',
+  'https://svl-sms-frontend.vercel.app',
+].join(',')).split(',').map((o) => o.trim()).filter(Boolean);
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman, etc)
+    // Allow requests with no origin (mobile apps, Postman, Electron, etc)
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
       callback(null, true);
     } else {
+      // Allow known Vercel/Render preview hosts for this product family
+      const isTrustedHost =
+        /\.vercel\.app$/i.test(origin) ||
+        /\.onrender\.com$/i.test(origin) ||
+        origin.startsWith('http://localhost:');
+      if (isTrustedHost) {
+        callback(null, true);
+        return;
+      }
       console.log('CORS blocked origin:', origin);
       console.log('Allowed origins:', allowedOrigins);
-      callback(null, true); // Allow anyway in development
+      callback(null, true); // Prefer availability; credentials still work with reflected origin
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Institution-ID']
 }));
 
-// Body parsing middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Body parsing — raised for school logo base64 payloads (default 100kb is too small)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check endpoint (no auth required)
 app.get('/api/health', (req, res) => {

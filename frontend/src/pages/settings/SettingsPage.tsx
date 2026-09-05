@@ -46,20 +46,6 @@ export default function SettingsPage() {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleLogoUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('Logo must be under 2MB');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setForm((prev) => ({ ...prev, logo: String(reader.result) }));
-    };
-    reader.readAsDataURL(file);
-  };
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -99,8 +85,27 @@ export default function SettingsPage() {
               )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">School Logo</label>
-                <input type="file" accept="image/*" onChange={handleLogoUpload} className="text-sm" />
-                <p className="text-xs text-gray-400 mt-1">PNG/JPG up to 2MB. Colors below theme the portal.</p>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                      toast.error('Logo must be under 5MB');
+                      return;
+                    }
+                    try {
+                      const { compressImageToDataUrl } = await import('../../utils/compressImage');
+                      const dataUrl = await compressImageToDataUrl(file);
+                      setForm((prev) => ({ ...prev, logo: dataUrl }));
+                    } catch (err: any) {
+                      toast.error(err?.message || 'Failed to process logo');
+                    }
+                  }}
+                  className="text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">PNG/JPG up to 5MB (auto-compressed). Colors below theme the portal.</p>
               </div>
             </div>
             <div>
