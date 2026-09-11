@@ -7,7 +7,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://svl-sms.onrender.com/api/:path*"
+      "destination": "https://svl-sms-backend.onrender.com/api/:path*"
     },
     {
       "source": "/((?!assets/).*)",
