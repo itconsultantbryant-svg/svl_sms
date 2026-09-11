@@ -160,7 +160,7 @@ export default function LoginPage() {
 
           <div className="mt-6 text-center">
             <p className="text-xs text-gray-400">
-              Secure &bull; Offline &bull; Reliable
+              Both Online and Offline &bull; Reliable &bull; Secure &bull; User-friendly
             </p>
           </div>
         </div>
