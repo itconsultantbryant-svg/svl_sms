@@ -8,6 +8,11 @@ export default function StudentGradesPage() {
     queryFn: () => api.get('/student-portal/grades').then(r => r.data),
   });
 
+  const { data: gradebookData } = useQuery({
+    queryKey: ['student-gradebook'],
+    queryFn: () => api.get('/gradebook/student/me').then(r => r.data),
+  });
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -25,6 +30,7 @@ export default function StudentGradesPage() {
   }
 
   const grades: any[] = data?.data || [];
+  const gradebooks: any[] = gradebookData?.data || [];
 
   return (
     <div className="space-y-6">
@@ -34,8 +40,39 @@ export default function StudentGradesPage() {
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-6 py-3 border-b bg-gray-50 font-medium text-sm text-gray-700">Term gradebook (approved)</div>
+        {gradebooks.length === 0 ? (
+          <div className="p-6 text-center text-gray-400 text-sm">No approved gradebook scores yet.</div>
+        ) : (
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Term</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">%</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Grade</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {gradebooks.map((g: any) => (
+                <tr key={g.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 text-sm text-gray-700">{g.subject_name}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{g.class_name || '-'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{g.term_name || '-'}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-blue-600">{g.computed_percent}%</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{g.letter_grade}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-6 py-3 border-b bg-gray-50 font-medium text-sm text-gray-700">Exam results</div>
         {grades.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">No grades available yet.</div>
+          <div className="p-8 text-center text-gray-400">No exam grades available yet.</div>
         ) : (
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">

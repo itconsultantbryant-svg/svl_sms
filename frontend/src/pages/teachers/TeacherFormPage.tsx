@@ -14,11 +14,13 @@ export default function TeacherFormPage() {
   const [form, setForm] = useState({
     first_name: '', middle_name: '', last_name: '',
     gender: '', date_of_birth: '', phone: '', email: '',
-    address: '', department_id: '', designation_id: '', branch_id: '',
+    address: '', photo: '', department_id: '', designation_id: '', branch_id: '',
     qualification: '', experience: '', employment_date: '',
     employment_type: 'full-time', basic_salary: '',
     bank_name: '', bank_account: '',
+    generate_credentials: true,
   });
+  const [createdCreds, setCreatedCreds] = useState<{ username: string; password: string } | null>(null);
 
   const { data: branches } = useQuery<Branch[]>({
     queryKey: ['branches'],
@@ -55,21 +57,53 @@ export default function TeacherFormPage() {
     }
     setLoading(true);
     try {
-      const payload = { ...form, basic_salary: parseFloat(form.basic_salary) || 0 };
+      const payload = { ...form, basic_salary: parseFloat(form.basic_salary) || 0, generate_credentials: true };
       if (isEdit) {
         await api.put(`/teachers/${id}`, payload);
         toast.success('Teacher updated successfully');
+        navigate('/teachers');
       } else {
-        await api.post('/teachers', payload);
-        toast.success('Teacher created successfully');
+        const res = await api.post('/teachers', payload);
+        setCreatedCreds(res.data.credentials || null);
+        toast.success('Teacher created — save credentials below');
       }
-      navigate('/teachers');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Operation failed');
     } finally {
       setLoading(false);
     }
   };
+
+  const onPhoto = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const { compressImageToDataUrl } = await import('../../utils/compressImage');
+      const dataUrl = await compressImageToDataUrl(file);
+      setForm((prev) => ({ ...prev, photo: dataUrl }));
+    } catch {
+      toast.error('Could not process image');
+    }
+  };
+
+  if (createdCreds) {
+    return (
+      <div className="max-w-lg space-y-6">
+        <h1 className="text-2xl font-bold text-gray-900">Teacher created</h1>
+        <div className="card space-y-3">
+          <p className="text-sm text-gray-600">Share these login credentials with the teacher.</p>
+          <div>
+            <div className="text-xs text-gray-500">Username</div>
+            <div className="font-mono font-semibold">{createdCreds.username}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500">Temporary password</div>
+            <div className="font-mono font-semibold">{createdCreds.password}</div>
+          </div>
+          <button type="button" className="btn-primary" onClick={() => navigate('/teachers')}>Done</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -81,6 +115,17 @@ export default function TeacherFormPage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="card">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h2>
+          <div className="mb-4 flex items-center gap-4">
+            {form.photo ? (
+              <img src={form.photo} alt="" className="w-20 h-20 rounded-full object-cover border" />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-gray-200" />
+            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Profile photo</label>
+              <input type="file" accept="image/*" onChange={(e) => onPhoto(e.target.files?.[0] || null)} />
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>

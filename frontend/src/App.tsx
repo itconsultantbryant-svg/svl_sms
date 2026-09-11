@@ -53,6 +53,8 @@ import EnquiriesPage from './pages/admission/EnquiriesPage';
 import EnquiryFormPage from './pages/admission/EnquiryFormPage';
 import ApplicationsPage from './pages/admission/ApplicationsPage';
 import RolesPage from './pages/permissions/RolesPage';
+import UserAccessPage from './pages/permissions/UserAccessPage';
+import PasswordRequestsPage from './pages/permissions/PasswordRequestsPage';
 import AssignmentsPage from './pages/assignments/AssignmentsPage';
 import TeacherClassesPage from './pages/teacher/TeacherClassesPage';
 import TeacherStudentsPage from './pages/teacher/TeacherStudentsPage';
@@ -60,6 +62,12 @@ import StudentGradesPage from './pages/student/StudentGradesPage';
 import StudentAssignmentsPage from './pages/student/StudentAssignmentsPage';
 import StudentAttendancePage from './pages/student/StudentAttendancePage';
 import ParentChildrenPage from './pages/parent/ParentChildrenPage';
+import GradebookAdminPage from './pages/gradebook/GradebookAdminPage';
+import GradebookTeacherPage from './pages/gradebook/GradebookTeacherPage';
+import GradebookEntryPage from './pages/gradebook/GradebookEntryPage';
+import LessonPlansAdminPage from './pages/lesson-plans/LessonPlansAdminPage';
+import LessonPlansTeacherPage from './pages/lesson-plans/LessonPlansTeacherPage';
+import ChangePasswordPage from './pages/auth/ChangePasswordPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -154,9 +162,18 @@ function AppContent() {
                 <Route path="/branches" element={<BranchesPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/permissions/roles" element={<RolesPage />} />
+                <Route path="/permissions/user-access" element={<UserAccessPage />} />
+                <Route path="/permissions/password-requests" element={<PasswordRequestsPage />} />
+                <Route path="/account/password" element={<ChangePasswordPage />} />
+
+                <Route path="/gradebook" element={<GradebookAdminPage />} />
+                <Route path="/gradebook/:id" element={<GradebookEntryPage />} />
+                <Route path="/lesson-plans" element={<LessonPlansAdminPage />} />
 
                 <Route path="/teacher/classes" element={<TeacherClassesPage />} />
                 <Route path="/teacher/students" element={<TeacherStudentsPage />} />
+                <Route path="/teacher/gradebook" element={<GradebookTeacherPage />} />
+                <Route path="/teacher/lesson-plans" element={<LessonPlansTeacherPage />} />
 
                 <Route path="/student/grades" element={<StudentGradesPage />} />
                 <Route path="/student/assignments" element={<StudentAssignmentsPage />} />

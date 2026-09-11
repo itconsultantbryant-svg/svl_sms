@@ -884,20 +884,23 @@ function resolveUserRole(db: any, userType: string, institutionId: string | null
 // Create a user (any type, any institution)
 platformAdminRouter.post('/users', (req: AuthRequest, res: Response) => {
   const {
-    username, email, password, first_name, last_name, phone,
-    user_type, institution_id, branch_id, role_id,
+    username, email, password, first_name, last_name, phone, avatar,
+    user_type, institution_id, branch_id, role_id, role_ids,
     linked_entity_type, linked_entity_id, is_active,
   } = req.body;
 
-  if (!username || !password || !first_name || !last_name || !user_type) {
+  if (!username || !first_name || !last_name || !user_type) {
     res.status(400).json({
       error: 'Required fields missing',
-      required: ['username', 'password', 'first_name', 'last_name', 'user_type'],
+      required: ['username', 'first_name', 'last_name', 'user_type'],
     });
     return;
   }
 
   const db = getDatabase();
+  const { generateDefaultPassword } = require('../utils/helpers');
+  const { setUserRoles, ensureUserRole } = require('../utils/userAccess');
+  const temporaryPassword = password || generateDefaultPassword();
 
   // Validate user_type
   const validTypes = ['platform_admin', 'institution_admin', 'branch_admin', 'staff', 'teacher', 'parent', 'student'];
@@ -930,15 +933,15 @@ platformAdminRouter.post('/users', (req: AuthRequest, res: Response) => {
   }
 
   const roleId = resolveUserRole(db, user_type, resolvedInstitutionId, role_id);
-  const passwordHash = bcrypt.hashSync(password, 10);
+  const passwordHash = bcrypt.hashSync(temporaryPassword, 10);
   const id = generateId();
 
   db.prepare(`
     INSERT INTO users (
       id, institution_id, branch_id, username, email, password_hash,
-      first_name, last_name, phone, role_id, user_type,
+      first_name, last_name, phone, avatar, role_id, user_type,
       linked_entity_type, linked_entity_id, is_active, email_verified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
   `).run(
     id,
     resolvedInstitutionId,
@@ -949,6 +952,7 @@ platformAdminRouter.post('/users', (req: AuthRequest, res: Response) => {
     first_name,
     last_name,
     phone || null,
+    avatar || null,
     roleId,
     user_type,
     linked_entity_type || null,
@@ -956,14 +960,21 @@ platformAdminRouter.post('/users', (req: AuthRequest, res: Response) => {
     is_active === undefined ? 1 : (is_active ? 1 : 0)
   );
 
+  if (Array.isArray(role_ids) && role_ids.length) {
+    setUserRoles(id, role_ids);
+  } else if (roleId) {
+    ensureUserRole(id, roleId, true);
+  }
+
   res.status(201).json({
     id,
     message: 'User created successfully',
     credentials: {
       username,
-      password,
+      password: temporaryPassword,
       email: email || null,
     },
+    temporary_password: temporaryPassword,
   });
 });
 

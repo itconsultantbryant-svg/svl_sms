@@ -22,6 +22,8 @@ export interface User {
     name: string;
     display_name?: string;
   };
+  roles?: Array<{ id: string; code?: string | null; name?: string | null }>;
+  role_codes?: string[];
   branch?: {
     id: string;
     name: string;

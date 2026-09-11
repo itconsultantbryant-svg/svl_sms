@@ -2,7 +2,8 @@ import { Router, Response } from 'express';
 import { getDatabase } from '../database/init';
 import { AuthRequest, authorize } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
-import { generateId, generateEmployeeId, paginate, buildSearchQuery } from '../utils/helpers';
+import { generateId, generateEmployeeId, generateDefaultPassword, paginate, buildSearchQuery } from '../utils/helpers';
+import { ensureUserRole } from '../utils/userAccess';
 import bcrypt from 'bcryptjs';
 
 export const teachersRouter = Router();
@@ -115,8 +116,7 @@ teachersRouter.post('/', authorize('platform_admin', 'institution_admin', 'hr_ma
   }
 
   if (generate_credentials || !password) {
-    // Generate password: FirstnameYYYY (e.g., John2024)
-    finalPassword = `${first_name}${new Date().getFullYear()}`;
+    finalPassword = generateDefaultPassword();
   }
 
   // Check username uniqueness
@@ -170,6 +170,7 @@ teachersRouter.post('/', authorize('platform_admin', 'institution_admin', 'hr_ma
       first_name, last_name, phone, teacherRole.id, 'teacher',
       'employee', id
     );
+    ensureUserRole(userId, teacherRole.id, true);
   });
 
   try {
@@ -228,6 +229,17 @@ teachersRouter.put('/:id', authorize('platform_admin', 'institution_admin', 'hr_
     address, photo, department_id, designation_id, qualification, experience,
     employment_type, basic_salary, bank_name, bank_account, is_active, id
   );
+
+  if (photo || first_name || last_name) {
+    db.prepare(`
+      UPDATE users SET
+        avatar = COALESCE(?, avatar),
+        first_name = COALESCE(?, first_name),
+        last_name = COALESCE(?, last_name),
+        updated_at = datetime('now')
+      WHERE linked_entity_type = 'employee' AND linked_entity_id = ?
+    `).run(photo || null, first_name || null, last_name || null, id);
+  }
 
   res.json({ message: 'Teacher updated successfully' });
 });

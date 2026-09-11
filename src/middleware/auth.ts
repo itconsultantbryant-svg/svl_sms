@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { getDatabase } from '../database/init';
 import { isExpired, getDaysRemaining } from '../utils/licensing';
+import { getMergedAccessForUser, userHasAnyPermission } from '../utils/userAccess';
 
 // CRITICAL: Must match the secret in routes/auth.ts!
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
@@ -25,6 +26,10 @@ export interface AuthRequest extends Request {
     license_tier?: string;
     days_remaining?: number;
     license_id?: string;
+    // Multi-role merge
+    roles?: Array<{ id: string; code: string | null; name: string | null }>;
+    role_codes?: string[];
+    permissions?: string[];
   };
   institution_id?: string | null;
 }
@@ -67,6 +72,20 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
       console.log('❌ User not found or inactive');
       res.status(401).json({ error: 'User not found or inactive' });
       return;
+    }
+
+    // Attach merged multi-role access
+    const access = getMergedAccessForUser(user.id, user.role_id);
+    user.roles = access.roles;
+    user.role_codes = access.role_codes;
+    user.permissions = access.permissions;
+    if (access.primary_role_id) {
+      user.role_id = access.primary_role_id;
+      const primary = access.roles.find((r) => r.id === access.primary_role_id);
+      if (primary) {
+        user.role_code = primary.code;
+        user.role_name = primary.name;
+      }
     }
 
     // Platform superadmin manages the whole system — never gated by school licenses
@@ -170,7 +189,12 @@ export function authorize(...roles: string[]) {
     if (roles.length > 0) {
       const userRoleCode = req.user.role_code || '';
       const userType = req.user.user_type || '';
-      if (!roles.includes(userRoleCode) && !roles.includes(userType)) {
+      const roleCodes = req.user.role_codes || [];
+      const allowed =
+        roles.includes(userRoleCode) ||
+        roles.includes(userType) ||
+        roleCodes.some((c) => roles.includes(c));
+      if (!allowed) {
         res.status(403).json({ error: 'Insufficient permissions' });
         return;
       }
@@ -191,64 +215,21 @@ export function requirePermission(...permissions: string[]) {
       return;
     }
 
-    // Platform admins and institution admins have all permissions
-    if (req.user.user_type === 'platform_admin' || req.user.user_type === 'institution_admin') {
+    if (userHasAnyPermission(req.user.id, req.user.user_type, req.user.role_id, permissions)) {
       next();
       return;
     }
 
-    // Get user's role permissions
-    if (!req.user.role_id) {
-      res.status(403).json({ error: 'No role assigned' });
-      return;
-    }
-
-    const db = getDatabase();
-    const role = db.prepare(`
-      SELECT permissions FROM roles WHERE id = ?
-    `).get(req.user.role_id) as any;
-
-    if (!role || !role.permissions) {
-      res.status(403).json({ error: 'No permissions found' });
-      return;
-    }
-
-    const userPermissions = JSON.parse(role.permissions) as string[];
-
-    // Check if user has any of the required permissions
-    const hasPermission = permissions.some(perm => userPermissions.includes(perm));
-
-    if (!hasPermission) {
-      res.status(403).json({
-        error: 'Insufficient permissions',
-        required: permissions,
-        message: 'You do not have permission to perform this action'
-      });
-      return;
-    }
-
-    next();
+    res.status(403).json({
+      error: 'Insufficient permissions',
+      required: permissions,
+      message: 'You do not have permission to perform this action'
+    });
   };
 }
 
 // Check if user has specific permission (for conditional logic)
 export function hasPermission(req: AuthRequest, permission: string): boolean {
   if (!req.user) return false;
-
-  // Platform admins and institution admins have all permissions
-  if (req.user.user_type === 'platform_admin' || req.user.user_type === 'institution_admin') {
-    return true;
-  }
-
-  if (!req.user.role_id) return false;
-
-  const db = getDatabase();
-  const role = db.prepare(`
-    SELECT permissions FROM roles WHERE id = ?
-  `).get(req.user.role_id) as any;
-
-  if (!role || !role.permissions) return false;
-
-  const userPermissions = JSON.parse(role.permissions) as string[];
-  return userPermissions.includes(permission);
+  return userHasAnyPermission(req.user.id, req.user.user_type, req.user.role_id, [permission]);
 }

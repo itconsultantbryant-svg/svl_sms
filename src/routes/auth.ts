@@ -2,12 +2,18 @@ import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { getDatabase } from '../database/init';
+import { getMergedAccessForUser } from '../utils/userAccess';
+import { generateId } from '../utils/helpers';
+import { authenticate, AuthRequest, authorize } from '../middleware/auth';
 
 export const authRouter = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
 function mapUserResponse(user: any) {
+  const access = getMergedAccessForUser(user.id, user.role_id);
+  const primary = access.roles.find((r) => r.id === access.primary_role_id) || access.roles[0];
+
   return {
     id: user.id,
     username: user.username,
@@ -26,11 +32,14 @@ function mapUserResponse(user: any) {
     secondary_color: user.secondary_color,
     accent_color: user.accent_color,
     role: {
-      id: user.role_id,
-      code: user.role_code,
-      name: user.role_name,
-      display_name: user.role_name,
+      id: primary?.id || user.role_id,
+      code: primary?.code || user.role_code,
+      name: primary?.name || user.role_name,
+      display_name: primary?.name || user.role_name,
     },
+    roles: access.roles,
+    role_codes: access.role_codes,
+    permissions: access.permissions,
     branch: user.branch_id
       ? {
           id: user.branch_id,
@@ -143,4 +152,122 @@ authRouter.get('/me', async (req: Request, res: Response) => {
 
 authRouter.post('/logout', (_req: Request, res: Response) => {
   res.json({ message: 'Logged out successfully' });
+});
+
+/** Change password. Students create a pending request; others apply immediately. */
+authRouter.post('/change-password', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { current_password, new_password } = req.body;
+    if (!current_password || !new_password) {
+      res.status(400).json({ error: 'current_password and new_password are required' });
+      return;
+    }
+    if (String(new_password).length < 6) {
+      res.status(400).json({ error: 'New password must be at least 6 characters' });
+      return;
+    }
+
+    const db = getDatabase();
+    const user = db.prepare('SELECT id, password_hash, user_type, institution_id FROM users WHERE id = ?')
+      .get(req.user!.id) as any;
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const ok = await bcrypt.compare(current_password, user.password_hash);
+    if (!ok) {
+      res.status(401).json({ error: 'Current password is incorrect' });
+      return;
+    }
+
+    const newHash = bcrypt.hashSync(new_password, 10);
+
+    if (user.user_type === 'student') {
+      // Reject duplicate pending
+      const pending = db.prepare(`
+        SELECT id FROM password_change_requests
+        WHERE user_id = ? AND status = 'pending'
+      `).get(user.id);
+      if (pending) {
+        res.status(409).json({ error: 'A password change request is already pending admin approval' });
+        return;
+      }
+      const id = generateId();
+      db.prepare(`
+        INSERT INTO password_change_requests (id, institution_id, user_id, new_password_hash, status)
+        VALUES (?, ?, ?, ?, 'pending')
+      `).run(id, user.institution_id, user.id, newHash);
+      res.json({
+        message: 'Password change submitted for admin approval',
+        requires_approval: true,
+        request_id: id,
+      });
+      return;
+    }
+
+    db.prepare(`UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`)
+      .run(newHash, user.id);
+    res.json({ message: 'Password updated successfully', requires_approval: false });
+  } catch (error: any) {
+    console.error('Change password error:', error);
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+});
+
+authRouter.get('/password-requests', authenticate, authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  const status = (req.query.status as string) || 'pending';
+  const institutionFilter = req.user?.user_type === 'platform_admin' && !req.user.institution_id
+    ? '1=1'
+    : `pcr.institution_id = '${req.user?.institution_id}'`;
+
+  const rows = db.prepare(`
+    SELECT pcr.*, u.username, u.first_name, u.last_name, u.user_type, u.email
+    FROM password_change_requests pcr
+    JOIN users u ON u.id = pcr.user_id
+    WHERE ${institutionFilter} AND pcr.status = ?
+    ORDER BY pcr.requested_at DESC
+  `).all(status);
+
+  res.json({ data: rows });
+});
+
+authRouter.post('/password-requests/:id/approve', authenticate, authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  const row = db.prepare(`SELECT * FROM password_change_requests WHERE id = ?`).get(req.params.id) as any;
+  if (!row || row.status !== 'pending') {
+    res.status(404).json({ error: 'Pending request not found' });
+    return;
+  }
+
+  const tx = db.transaction(() => {
+    db.prepare(`UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`)
+      .run(row.new_password_hash, row.user_id);
+    db.prepare(`
+      UPDATE password_change_requests
+      SET status = 'approved', reviewed_by = ?, reviewed_at = datetime('now')
+      WHERE id = ?
+    `).run(req.user!.id, row.id);
+  });
+  tx();
+
+  res.json({ message: 'Password change approved' });
+});
+
+authRouter.post('/password-requests/:id/reject', authenticate, authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  const row = db.prepare(`SELECT * FROM password_change_requests WHERE id = ?`).get(req.params.id) as any;
+  if (!row || row.status !== 'pending') {
+    res.status(404).json({ error: 'Pending request not found' });
+    return;
+  }
+
+  db.prepare(`
+    UPDATE password_change_requests
+    SET status = 'rejected', reviewed_by = ?, reviewed_at = datetime('now'), rejection_reason = ?
+    WHERE id = ?
+  `).run(req.user!.id, req.body.reason || null, row.id);
+
+  res.json({ message: 'Password change rejected' });
 });

@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 
 export function generateId(): string {
   return uuidv4();
@@ -14,6 +15,17 @@ export function generateEmployeeId(prefix: string = 'EMP'): string {
   const year = new Date().getFullYear();
   const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
   return `${prefix}-${year}-${random}`;
+}
+
+/** Default temporary password shown once at registration (user can change later). */
+export function generateDefaultPassword(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  let suffix = '';
+  const bytes = crypto.randomBytes(6);
+  for (let i = 0; i < 6; i++) {
+    suffix += alphabet[bytes[i] % alphabet.length];
+  }
+  return `SvL${suffix}`;
 }
 
 export function paginate(page: number = 1, limit: number = 20) {

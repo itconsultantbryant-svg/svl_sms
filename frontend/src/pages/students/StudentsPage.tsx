@@ -99,9 +99,13 @@ export default function StudentsPage() {
                     <td className="py-3 px-3 font-medium text-primary-600">{student.admission_number}</td>
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium">
-                          {student.first_name[0]}{student.last_name[0]}
-                        </div>
+                        {student.photo ? (
+                          <img src={student.photo} alt="" className="w-8 h-8 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium">
+                            {student.first_name[0]}{student.last_name[0]}
+                          </div>
+                        )}
                         {student.first_name} {student.last_name}
                       </div>
                     </td>

@@ -235,11 +235,7 @@ export default function UserFormPage() {
       toast.error('Select an institution');
       return;
     }
-    if (!isEdit && !form.password) {
-      toast.error('Password is required for a new user');
-      return;
-    }
-    if (!isEdit && form.password.length < 6) {
+    if (!isEdit && form.password && form.password.length < 6) {
       toast.error('Password must be at least 6 characters');
       return;
     }
@@ -374,7 +370,7 @@ export default function UserFormPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {isEdit ? 'Password (leave blank to keep current)' : 'Password *'}
+                {isEdit ? 'Password (leave blank to keep current)' : 'Password (optional)'}
               </label>
               <input
                 type="password"
@@ -384,7 +380,7 @@ export default function UserFormPage() {
                 autoComplete="new-password"
                 className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
               />
-              {!isEdit && <p className="mt-1 text-xs text-gray-400">Minimum 6 characters</p>}
+              {!isEdit && <p className="mt-1 text-xs text-gray-400">Leave blank to auto-generate a temporary password</p>}
             </div>
           </div>
         </div>

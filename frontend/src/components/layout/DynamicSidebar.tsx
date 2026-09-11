@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBrand } from '../../contexts/BrandContext';
-import { getRoleHomePath, isFinanceRole, isRegistrarRole } from '../../utils/roleHome';
+import { getRoleHomePath, getMergedRoleCodes, isFinanceRole, isRegistrarRole } from '../../utils/roleHome';
 import api from '../../utils/api';
 
 interface SidebarProps {
@@ -218,12 +218,39 @@ function buildNavigation(homePath: string): MenuItem[] {
       icon: Shield,
       userTypes: ['platform_admin', 'institution_admin'],
     },
+    {
+      name: 'User Access',
+      href: '/permissions/user-access',
+      icon: Shield,
+      userTypes: ['platform_admin', 'institution_admin'],
+    },
+    {
+      name: 'Password Requests',
+      href: '/permissions/password-requests',
+      icon: Shield,
+      userTypes: ['platform_admin', 'institution_admin'],
+    },
+    {
+      name: 'Gradebook',
+      href: '/gradebook',
+      icon: ClipboardList,
+      userTypes: ['platform_admin', 'institution_admin'],
+    },
+    {
+      name: 'Lesson Plans',
+      href: '/lesson-plans',
+      icon: BookOpen,
+      userTypes: ['platform_admin', 'institution_admin'],
+    },
     { name: 'My Classes', href: '/teacher/classes', icon: BookMarked, userTypes: ['teacher'] },
     { name: 'My Students', href: '/teacher/students', icon: UserCheck, userTypes: ['teacher'] },
+    { name: 'My Gradebook', href: '/teacher/gradebook', icon: ClipboardList, userTypes: ['teacher'] },
+    { name: 'Lesson Plans', href: '/teacher/lesson-plans', icon: BookOpen, userTypes: ['teacher'] },
     { name: 'My Grades', href: '/student/grades', icon: TrendingUp, userTypes: ['student'] },
     { name: 'My Assignments', href: '/student/assignments', icon: CheckSquare, userTypes: ['student'] },
     { name: 'My Attendance', href: '/student/attendance', icon: Calendar, userTypes: ['student'] },
     { name: 'My Children', href: '/parent/children', icon: Users, userTypes: ['parent'] },
+    { name: 'Change Password', href: '/account/password', icon: Settings, userTypes: ['platform_admin', 'institution_admin', 'teacher', 'student', 'parent', 'staff', 'branch_admin'] },
   ];
 }
 
@@ -237,18 +264,29 @@ export default function DynamicSidebar({ open, onClose }: SidebarProps) {
 
   const homePath = getRoleHomePath(user);
   const roleCode = (user?.role?.code || '').toLowerCase();
+  const mergedCodes = getMergedRoleCodes(user);
   const navigation = useMemo(() => buildNavigation(homePath), [homePath]);
 
   useEffect(() => {
     fetchPermissions();
   }, [user]);
 
+  // Prefer permissions from /auth/me merge when available
+  useEffect(() => {
+    if (user?.permissions?.length) {
+      setPermissions(user.permissions);
+      setLoading(false);
+    }
+  }, [user?.permissions]);
+
   const fetchPermissions = async () => {
     try {
       const response = await api.get('/permissions/my-permissions');
-      setPermissions(response.data.permissions || []);
+      const fromApi = response.data.permissions || [];
+      const fromUser = user?.permissions || [];
+      setPermissions(Array.from(new Set([...fromApi, ...fromUser])));
     } catch {
-      setPermissions([]);
+      setPermissions(user?.permissions || []);
     } finally {
       setLoading(false);
     }
@@ -264,17 +302,28 @@ export default function DynamicSidebar({ open, onClose }: SidebarProps) {
     return permissions.some((p) => p === `${module}.*` || p.startsWith(`${module}.`));
   };
 
+  const effectiveUserTypes = useMemo(() => {
+    const types = new Set<string>([user?.user_type || '']);
+    for (const code of mergedCodes) {
+      if (['teacher', 'student', 'parent', 'staff'].includes(code)) types.add(code);
+      if (['accountant', 'finance_officer', 'finance', 'registrar', 'admission_officer', 'admission', 'hr_manager', 'librarian', 'receptionist'].includes(code)) {
+        types.add('staff');
+      }
+      if (code === 'institution_admin' || code === 'branch_admin') types.add(code);
+    }
+    return types;
+  }, [user?.user_type, mergedCodes]);
+
   const shouldShowItem = (item: MenuItem): boolean => {
     if (!user) return false;
 
-    if (item.excludeRoleCodes?.includes(roleCode)) return false;
+    if (item.excludeRoleCodes?.some((c) => mergedCodes.includes(c))) return false;
 
     if (item.roleCodes?.length) {
-      return item.roleCodes.includes(roleCode) && hasPermission(item.permission);
+      return item.roleCodes.some((c) => mergedCodes.includes(c)) && hasPermission(item.permission);
     }
 
-    if (item.userTypes?.length && !item.userTypes.includes(user.user_type)) {
-      // Finance/registrar staff may have user_type staff but role-specific menus already handled
+    if (item.userTypes?.length && !item.userTypes.some((t) => effectiveUserTypes.has(t))) {
       return false;
     }
 
@@ -296,7 +345,7 @@ export default function DynamicSidebar({ open, onClose }: SidebarProps) {
         if (item.name.toLowerCase().includes(q)) return true;
         return item.children?.some((c) => c.name.toLowerCase().includes(q));
       });
-  }, [navigation, permissions, user, roleCode, search]);
+  }, [navigation, permissions, user, roleCode, mergedCodes, search, effectiveUserTypes]);
 
   const toggleExpanded = (name: string) => {
     setExpandedItems((prev) =>

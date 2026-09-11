@@ -67,9 +67,13 @@ export default function TeachersPage() {
                     <td className="py-3 px-3 font-medium text-primary-600">{teacher.employee_id}</td>
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-xs font-medium text-green-700">
-                          {teacher.first_name[0]}{teacher.last_name[0]}
-                        </div>
+                        {teacher.photo ? (
+                          <img src={teacher.photo} alt="" className="w-8 h-8 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-xs font-medium text-green-700">
+                            {teacher.first_name[0]}{teacher.last_name[0]}
+                          </div>
+                        )}
                         {teacher.first_name} {teacher.last_name}
                       </div>
                     </td>

@@ -57,6 +57,16 @@ const SYSTEM_PERMISSIONS = {
   'results.view': { module: 'results', name: 'View Results', description: 'View student results' },
   'results.publish': { module: 'results', name: 'Publish Results', description: 'Publish results to students' },
 
+  // Gradebook
+  'gradebook.manage': { module: 'gradebook', name: 'Manage Gradebook', description: 'Generate and manage gradebooks' },
+  'gradebook.enter': { module: 'gradebook', name: 'Enter Gradebook', description: 'Enter activity grades' },
+  'gradebook.approve': { module: 'gradebook', name: 'Approve Gradebook', description: 'Approve submitted gradebooks' },
+  'gradebook.view': { module: 'gradebook', name: 'View Gradebook', description: 'View approved grades' },
+
+  // Lesson plans
+  'lesson_plans.manage': { module: 'lesson_plans', name: 'Manage Lesson Plans', description: 'Create and send lesson plans' },
+  'lesson_plans.view': { module: 'lesson_plans', name: 'View Lesson Plans', description: 'View assigned lesson plans' },
+
   // Fees & Finance
   'fees.view': { module: 'fees', name: 'View Fees', description: 'View fee records' },
   'fees.create': { module: 'fees', name: 'Create Fees', description: 'Create fee structures' },
@@ -108,6 +118,8 @@ const ROLE_TEMPLATES = {
     'exams.view',
     'marks.view', 'marks.enter', 'marks.edit',
     'grades.view', 'grades.submit',
+    'gradebook.enter', 'gradebook.view',
+    'lesson_plans.view',
     'timetable.view',
     'communication.send', 'communication.view',
     'reports.view'
@@ -401,48 +413,27 @@ permissionsRouter.get('/role-templates', (req: AuthRequest, res: Response) => {
 
 // Get user's effective permissions
 permissionsRouter.get('/my-permissions', (req: AuthRequest, res: Response) => {
-  const db = getDatabase();
-
   // Platform admins and institution admins have all permissions
   if (req.user?.user_type === 'platform_admin' || req.user?.user_type === 'institution_admin') {
     res.json({
       user_type: req.user.user_type,
       has_all_permissions: true,
-      permissions: Object.keys(SYSTEM_PERMISSIONS)
+      permissions: Object.keys(SYSTEM_PERMISSIONS),
+      roles: req.user.roles || [],
+      role_codes: req.user.role_codes || [],
     });
     return;
   }
 
-  // Get user's role
-  if (!req.user?.role_id) {
-    res.json({
-      user_type: req.user?.user_type,
-      has_all_permissions: false,
-      permissions: []
-    });
-    return;
-  }
-
-  const role = db.prepare(`
-    SELECT permissions FROM roles WHERE id = ?
-  `).get(req.user.role_id) as any;
-
-  if (!role || !role.permissions) {
-    res.json({
-      user_type: req.user?.user_type,
-      has_all_permissions: false,
-      permissions: []
-    });
-    return;
-  }
-
-  const permissions = JSON.parse(role.permissions);
+  const { getMergedAccessForUser } = require('../utils/userAccess');
+  const access = getMergedAccessForUser(req.user!.id, req.user?.role_id);
 
   res.json({
     user_type: req.user?.user_type,
-    role_id: req.user.role_id,
     has_all_permissions: false,
-    permissions
+    permissions: access.permissions,
+    roles: access.roles,
+    role_codes: access.role_codes,
   });
 });
 

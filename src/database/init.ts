@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { schemaV2Consolidated } from './schema-v2-consolidated';
 import { homeworkAssignmentsSchema } from './schema-homework-assignments';
+import { gradebookLessonPermsSchema } from './schema-gradebook-lesson-perms';
 
 let db: Database.Database;
 
@@ -34,8 +35,19 @@ export function initializeDatabase(): void {
 
   database.exec(schemaV2Consolidated);
   database.exec(homeworkAssignmentsSchema);
+  database.exec(gradebookLessonPermsSchema);
   migrateInstitutionBranding(database);
+  backfillUserRoles(database);
 
   console.log('✓ Multi-tenant database initialized successfully');
   console.log('✓ Database schema with homework/assignments system created');
+  console.log('✓ Gradebook, lesson plans, multi-role, password-request tables ready');
+}
+
+/** Ensure existing users with role_id appear in user_roles for multi-role merge. */
+function backfillUserRoles(database: Database.Database): void {
+  database.prepare(`
+    INSERT OR IGNORE INTO user_roles (user_id, role_id, is_primary)
+    SELECT id, role_id, 1 FROM users WHERE role_id IS NOT NULL
+  `).run();
 }

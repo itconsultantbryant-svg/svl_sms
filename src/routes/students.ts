@@ -1,8 +1,10 @@
 import { Router, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import { getDatabase } from '../database/init';
 import { AuthRequest } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
-import { generateId, generateAdmissionNumber, paginate, buildSearchQuery } from '../utils/helpers';
+import { generateId, generateAdmissionNumber, generateDefaultPassword, paginate, buildSearchQuery } from '../utils/helpers';
+import { ensureUserRole } from '../utils/userAccess';
 
 export const studentsRouter = Router();
 
@@ -106,6 +108,9 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
   const id = generateId();
   const admission_number = generateAdmissionNumber();
+  const temporary_password = generateDefaultPassword();
+  const userId = generateId();
+  let parentCredentials: { username: string; temporary_password: string } | null = null;
 
   // TENANT ISOLATION: Include institution_id in INSERT
   const insertStudent = db.prepare(`
@@ -145,8 +150,48 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
       session_id || null
     );
 
+    // Login user: Student ID (admission_number) + default password
+    let studentRole = db.prepare(
+      'SELECT id FROM roles WHERE institution_id = ? AND role_code = ?'
+    ).get(req.institution_id, 'student') as any;
+    if (!studentRole) {
+      const roleId = generateId();
+      db.prepare(`
+        INSERT INTO roles (id, institution_id, role_code, role_name, description, role_level, is_active, permissions)
+        VALUES (?, ?, 'student', 'Student', 'Student portal access', 'institution', 1, ?)
+      `).run(roleId, req.institution_id, JSON.stringify(['gradebook.view', 'assignments.view']));
+      studentRole = { id: roleId };
+    }
+
+    const passwordHash = bcrypt.hashSync(temporary_password, 10);
+    const loginEmail = email || `${admission_number.toLowerCase()}@student.local`;
+    db.prepare(`
+      INSERT INTO users (
+        id, institution_id, branch_id, username, email, password_hash,
+        first_name, last_name, phone, avatar, role_id, user_type,
+        linked_entity_type, linked_entity_id, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'student', 'student', ?, 1)
+    `).run(
+      userId,
+      req.institution_id,
+      branch_id || req.user?.branch_id || null,
+      admission_number,
+      loginEmail,
+      passwordHash,
+      first_name,
+      last_name,
+      phone || null,
+      photo || null,
+      studentRole.id,
+      id
+    );
+    ensureUserRole(userId, studentRole.id, true);
+    db.prepare(`UPDATE students SET user_id = ? WHERE id = ?`).run(userId, id);
+
     if (parent) {
       const parentId = generateId();
+      const parentUserId = generateId();
+      const parentPassword = generateDefaultPassword();
       // TENANT ISOLATION: Include institution_id for parent
       db.prepare(`
         INSERT INTO parents (id, institution_id, first_name, last_name, relationship, phone, email, address, occupation)
@@ -163,11 +208,68 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
         parent.occupation || null
       );
       db.prepare('INSERT INTO student_parents (student_id, parent_id, is_primary) VALUES (?, ?, 1)').run(id, parentId);
+
+      let parentRole = db.prepare(
+        'SELECT id FROM roles WHERE institution_id = ? AND role_code = ?'
+      ).get(req.institution_id, 'parent') as any;
+      if (!parentRole) {
+        const roleId = generateId();
+        db.prepare(`
+          INSERT INTO roles (id, institution_id, role_code, role_name, description, role_level, is_active, permissions)
+          VALUES (?, ?, 'parent', 'Parent', 'Parent portal access', 'institution', 1, ?)
+        `).run(roleId, req.institution_id, JSON.stringify([]));
+        parentRole = { id: roleId };
+      }
+
+      const parentUsername = parent.email
+        ? String(parent.email).split('@')[0].toLowerCase().replace(/[^a-z0-9._]/g, '')
+        : `parent.${parent.first_name}.${parent.last_name}`.toLowerCase().replace(/\s+/g, '');
+      let finalParentUsername = parentUsername || `parent${Date.now()}`;
+      const existingParentUser = db.prepare('SELECT id FROM users WHERE username = ?').get(finalParentUsername);
+      if (existingParentUser) finalParentUsername = `${finalParentUsername}${Math.floor(Math.random() * 1000)}`;
+
+      db.prepare(`
+        INSERT INTO users (
+          id, institution_id, branch_id, username, email, password_hash,
+          first_name, last_name, phone, role_id, user_type,
+          linked_entity_type, linked_entity_id, is_active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'parent', 'parent', ?, 1)
+      `).run(
+        parentUserId,
+        req.institution_id,
+        branch_id || req.user?.branch_id || null,
+        finalParentUsername,
+        parent.email || `${finalParentUsername}@parent.local`,
+        bcrypt.hashSync(parentPassword, 10),
+        parent.first_name,
+        parent.last_name,
+        parent.phone || null,
+        parentRole.id,
+        parentId
+      );
+      ensureUserRole(parentUserId, parentRole.id, true);
+
+      db.prepare(`
+        INSERT INTO parent_students (id, institution_id, parent_id, student_id, relationship, is_primary)
+        VALUES (?, ?, ?, ?, ?, 1)
+      `).run(generateId(), req.institution_id, parentUserId, id, parent.relationship || 'guardian');
+
+      parentCredentials = {
+        username: finalParentUsername,
+        temporary_password: parentPassword,
+      };
     }
   });
 
   transaction();
-  res.status(201).json({ id, admission_number, message: 'Student admitted successfully' });
+  res.status(201).json({
+    id,
+    admission_number,
+    username: admission_number,
+    temporary_password,
+    parent_credentials: parentCredentials,
+    message: 'Student admitted successfully',
+  });
 });
 
 studentsRouter.put('/:id', (req: AuthRequest, res: Response) => {
@@ -208,6 +310,18 @@ studentsRouter.put('/:id', (req: AuthRequest, res: Response) => {
     county, address, phone, email, photo, blood_group, medical_info,
     class_id, section_id, session_id, status, id
   );
+
+  // Keep linked user avatar/name in sync when photo/name changes
+  if (photo || first_name || last_name) {
+    db.prepare(`
+      UPDATE users SET
+        avatar = COALESCE(?, avatar),
+        first_name = COALESCE(?, first_name),
+        last_name = COALESCE(?, last_name),
+        updated_at = datetime('now')
+      WHERE linked_entity_type = 'student' AND linked_entity_id = ?
+    `).run(photo || null, first_name || null, last_name || null, id);
+  }
 
   res.json({ message: 'Student updated successfully' });
 });

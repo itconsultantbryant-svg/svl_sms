@@ -16,11 +16,17 @@ export default function StudentFormPage() {
     first_name: '', middle_name: '', last_name: '',
     date_of_birth: '', gender: '', nationality: 'Liberian',
     county: '', address: '', phone: '', email: '',
+    photo: '',
     blood_group: '', medical_info: '',
     previous_school: '', previous_class: '', admission_date: '',
     branch_id: '', class_id: '', section_id: '', session_id: '',
     parent: { first_name: '', last_name: '', relationship: 'father', phone: '', email: '', occupation: '' },
   });
+  const [createdCreds, setCreatedCreds] = useState<{
+    admission_number: string;
+    temporary_password: string;
+    parent_credentials?: { username: string; temporary_password: string } | null;
+  } | null>(null);
 
   const { data: classes } = useQuery<Class[]>({
     queryKey: ['classes'],
@@ -78,17 +84,60 @@ export default function StudentFormPage() {
       if (isEdit) {
         await api.put(`/students/${id}`, form);
         toast.success('Student updated successfully');
+        navigate('/students');
       } else {
-        await api.post('/students', form);
-        toast.success('Student admitted successfully');
+        const res = await api.post('/students', form);
+        setCreatedCreds({
+          admission_number: res.data.admission_number,
+          temporary_password: res.data.temporary_password,
+          parent_credentials: res.data.parent_credentials,
+        });
+        toast.success('Student admitted — save the login credentials below');
       }
-      navigate('/students');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Operation failed');
     } finally {
       setLoading(false);
     }
   };
+
+  const onPhoto = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const { compressImageToDataUrl } = await import('../../utils/compressImage');
+      const dataUrl = await compressImageToDataUrl(file);
+      setForm((prev) => ({ ...prev, photo: dataUrl }));
+    } catch {
+      toast.error('Could not process image');
+    }
+  };
+
+  if (createdCreds) {
+    return (
+      <div className="max-w-lg space-y-6">
+        <h1 className="text-2xl font-bold text-gray-900">Student created</h1>
+        <div className="card space-y-3">
+          <p className="text-sm text-gray-600">Share these credentials with the student. They login with Student ID + password.</p>
+          <div>
+            <div className="text-xs text-gray-500">Student ID (username)</div>
+            <div className="font-mono font-semibold">{createdCreds.admission_number}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500">Temporary password</div>
+            <div className="font-mono font-semibold">{createdCreds.temporary_password}</div>
+          </div>
+          {createdCreds.parent_credentials && (
+            <div className="border-t pt-3 space-y-2">
+              <p className="text-sm font-medium">Parent login</p>
+              <div className="font-mono text-sm">User: {createdCreds.parent_credentials.username}</div>
+              <div className="font-mono text-sm">Pass: {createdCreds.parent_credentials.temporary_password}</div>
+            </div>
+          )}
+          <button type="button" className="btn-primary" onClick={() => navigate('/students')}>Done</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -104,6 +153,17 @@ export default function StudentFormPage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="card">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h2>
+          <div className="mb-4 flex items-center gap-4">
+            {form.photo ? (
+              <img src={form.photo} alt="" className="w-20 h-20 rounded-full object-cover border" />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-gray-200" />
+            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Profile photo</label>
+              <input type="file" accept="image/*" onChange={(e) => onPhoto(e.target.files?.[0] || null)} />
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>

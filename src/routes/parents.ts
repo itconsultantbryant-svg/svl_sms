@@ -1,8 +1,10 @@
 import { Router, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import { getDatabase } from '../database/init';
 import { AuthRequest } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
-import { generateId, paginate, buildSearchQuery } from '../utils/helpers';
+import { generateId, generateDefaultPassword, paginate, buildSearchQuery } from '../utils/helpers';
+import { ensureUserRole } from '../utils/userAccess';
 
 export const parentsRouter = Router();
 
@@ -65,7 +67,7 @@ parentsRouter.get('/:id', (req: AuthRequest, res: Response) => {
 });
 
 parentsRouter.post('/', (req: AuthRequest, res: Response) => {
-  const { first_name, last_name, relationship, phone, email, address, occupation, workplace, student_id } = req.body;
+  const { first_name, last_name, relationship, phone, email, address, occupation, workplace, student_id, photo } = req.body;
 
   if (!first_name || !last_name) {
     res.status(400).json({ error: 'First name and last name are required' });
@@ -74,21 +76,75 @@ parentsRouter.post('/', (req: AuthRequest, res: Response) => {
 
   const db = getDatabase();
   const id = generateId();
+  const userId = generateId();
+  const temporary_password = generateDefaultPassword();
+  let finalUsername = email
+    ? String(email).split('@')[0].toLowerCase().replace(/[^a-z0-9._]/g, '')
+    : `parent.${first_name}.${last_name}`.toLowerCase().replace(/\s+/g, '');
+  if (!finalUsername) finalUsername = `parent${Date.now()}`;
+  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(finalUsername);
+  if (existing) finalUsername = `${finalUsername}${Math.floor(Math.random() * 1000)}`;
 
   const transaction = db.transaction(() => {
     // TENANT ISOLATION: Include institution_id in INSERT
     db.prepare(`
-      INSERT INTO parents (id, institution_id, first_name, last_name, relationship, phone, email, address, occupation, workplace)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, req.institution_id, first_name, last_name, relationship || 'guardian', phone || null, email || null, address || null, occupation || null, workplace || null);
+      INSERT INTO parents (id, institution_id, first_name, last_name, relationship, phone, email, address, occupation, workplace, photo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, req.institution_id, first_name, last_name, relationship || 'guardian', phone || null, email || null, address || null, occupation || null, workplace || null, photo || null);
 
     if (student_id) {
       db.prepare('INSERT INTO student_parents (student_id, parent_id, is_primary) VALUES (?, ?, 0)').run(student_id, id);
     }
+
+    let parentRole = db.prepare(
+      'SELECT id FROM roles WHERE institution_id = ? AND role_code = ?'
+    ).get(req.institution_id, 'parent') as any;
+    if (!parentRole) {
+      const roleId = generateId();
+      db.prepare(`
+        INSERT INTO roles (id, institution_id, role_code, role_name, description, role_level, is_active, permissions)
+        VALUES (?, ?, 'parent', 'Parent', 'Parent portal access', 'institution', 1, ?)
+      `).run(roleId, req.institution_id, JSON.stringify([]));
+      parentRole = { id: roleId };
+    }
+
+    db.prepare(`
+      INSERT INTO users (
+        id, institution_id, branch_id, username, email, password_hash,
+        first_name, last_name, phone, avatar, role_id, user_type,
+        linked_entity_type, linked_entity_id, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'parent', 'parent', ?, 1)
+    `).run(
+      userId,
+      req.institution_id,
+      req.user?.branch_id || null,
+      finalUsername,
+      email || `${finalUsername}@parent.local`,
+      bcrypt.hashSync(temporary_password, 10),
+      first_name,
+      last_name,
+      phone || null,
+      photo || null,
+      parentRole.id,
+      id
+    );
+    ensureUserRole(userId, parentRole.id, true);
+
+    if (student_id) {
+      db.prepare(`
+        INSERT OR IGNORE INTO parent_students (id, institution_id, parent_id, student_id, relationship, is_primary)
+        VALUES (?, ?, ?, ?, ?, 0)
+      `).run(generateId(), req.institution_id, userId, student_id, relationship || 'guardian');
+    }
   });
 
   transaction();
-  res.status(201).json({ id, message: 'Parent created successfully' });
+  res.status(201).json({
+    id,
+    username: finalUsername,
+    temporary_password,
+    message: 'Parent created successfully',
+  });
 });
 
 parentsRouter.put('/:id', (req: AuthRequest, res: Response) => {

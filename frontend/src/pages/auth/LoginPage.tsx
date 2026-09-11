@@ -123,16 +123,17 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Username or Email
+                Username / Student ID
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="input-field"
-                placeholder="Enter your username"
+                placeholder="Username, email, or Student ID"
                 autoFocus
               />
+              <p className="text-xs text-gray-400 mt-1">Students: use your Student ID and default password</p>
             </div>
 
             <div>

@@ -37,6 +37,8 @@ import { platformAdminRouter } from './routes/platform-admin';
 import admissionRouter from './routes/admission';
 import { licensingRouter } from './routes/licensing';
 import { demoModeRouter } from './routes/demo-mode-enforcement';
+import { gradebookRouter } from './routes/gradebook';
+import { lessonPlansRouter } from './routes/lesson-plans';
 import { errorHandler } from './middleware/errorHandler';
 import { authenticate } from './middleware/auth';
 
@@ -134,6 +136,8 @@ app.use('/api/communication', authenticate, communicationRouter);
 app.use('/api/reports', authenticate, reportsRouter);
 app.use('/api/platform-admin', authenticate, platformAdminRouter);
 app.use('/api/admission', authenticate, admissionRouter);
+app.use('/api/gradebook', authenticate, gradebookRouter);
+app.use('/api/lesson-plans', authenticate, lessonPlansRouter);
 
 // Error handler
 app.use(errorHandler);
