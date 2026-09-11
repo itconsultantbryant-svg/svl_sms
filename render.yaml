@@ -22,7 +22,7 @@ services:
       - key: LICENSE_PRIVATE_KEY
         sync: false
       - key: CORS_ORIGINS
-        value: https://svl-sms.vercel.app,https://sms-system-ruby.vercel.app,https://svl-sms-frontend.vercel.app
+        value: https://svl-sms.vercel.app
       - key: FRONTEND_URL
         value: https://svl-sms.vercel.app
     healthCheckPath: /api/health
@@ -31,18 +31,3 @@ services:
       mountPath: /opt/render/project/src/data
       sizeGB: 2
 
-  - type: web
-    name: svl-sms-frontend
-    runtime: static
-    region: oregon
-    plan: standard
-    buildCommand: cd frontend && npm install --include=dev --legacy-peer-deps && npm run build
-    staticPublishPath: frontend/dist
-    routes:
-      - path: /*
-        destination: /index.html
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: VITE_API_URL
-        value: https://svl-sms-backend.onrender.com/api
