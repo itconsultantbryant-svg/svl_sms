@@ -5,7 +5,10 @@ import axios from 'axios';
 // real backend URL (with its dynamically assigned port) is fetched from the main
 // process at runtime via the preload bridge (window.api.getApiUrl()).
 const buildTimeUrl = (import.meta.env.VITE_API_URL || '').trim();
-const fallbackUrl = 'http://localhost:3001/api';
+// Production web builds use the same-origin /api proxy configured in the root
+// vercel.json. This avoids baking a carrier-sensitive cross-origin hostname into
+// the JavaScript bundle while development keeps using the local backend.
+const fallbackUrl = import.meta.env.PROD ? '/api' : 'http://localhost:3001/api';
 
 function normalize(raw: string): string {
   const trimmed = raw.replace(/\/+$/, '');
