@@ -22,7 +22,7 @@ services:
       - key: LICENSE_PRIVATE_KEY
         sync: false
       - key: CORS_ORIGINS
-        value: https://svl-sms.vercel.app
+        value: https://svl-sms.vercel.app,https://sms.softwarevalalib.app,https://seia.softwarevalalib.app
       - key: FRONTEND_URL
         value: https://svl-sms.vercel.app
     healthCheckPath: /api/health

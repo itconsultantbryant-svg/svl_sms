@@ -68,6 +68,7 @@ app.use(cors({
       const isTrustedHost =
         /\.vercel\.app$/i.test(origin) ||
         /\.onrender\.com$/i.test(origin) ||
+        /^https:\/\/([a-z0-9-]+\.)*softwarevalalib\.app$/i.test(origin) ||
         origin.startsWith('http://localhost:');
       if (isTrustedHost) {
         callback(null, true);

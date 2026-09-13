@@ -5,10 +5,19 @@ import axios from 'axios';
 // real backend URL (with its dynamically assigned port) is fetched from the main
 // process at runtime via the preload bridge (window.api.getApiUrl()).
 const buildTimeUrl = (import.meta.env.VITE_API_URL || '').trim();
-// Production web builds use the same-origin /api proxy configured in the root
-// vercel.json. This avoids baking a carrier-sensitive cross-origin hostname into
-// the JavaScript bundle while development keeps using the local backend.
+// Hosted web always calls /api on the same address the user opened (Vercel or
+// *.softwarevalalib.app). Vercel proxies that to Render. Browsers must not call
+// onrender.com directly — some Liberian mobile networks (Orange) cannot reach it.
 const fallbackUrl = import.meta.env.PROD ? '/api' : 'http://localhost:3001/api';
+
+function isDesktopShell(): boolean {
+  return typeof window !== 'undefined' && typeof (window as any).api?.getApiUrl === 'function';
+}
+
+function hostedWebBaseUrl(): string | null {
+  if (!import.meta.env.PROD || isDesktopShell()) return null;
+  return '/api';
+}
 
 function normalize(raw: string): string {
   const trimmed = raw.replace(/\/+$/, '');
@@ -34,11 +43,11 @@ async function resolveBaseUrl(): Promise<string> {
     }
   }
 
-  resolvedBaseUrl = buildTimeUrl ? normalize(buildTimeUrl) : fallbackUrl;
+  resolvedBaseUrl = hostedWebBaseUrl() || (buildTimeUrl ? normalize(buildTimeUrl) : fallbackUrl);
   return resolvedBaseUrl;
 }
 
-const initialBaseURL = buildTimeUrl ? normalize(buildTimeUrl) : fallbackUrl;
+const initialBaseURL = hostedWebBaseUrl() || (buildTimeUrl ? normalize(buildTimeUrl) : fallbackUrl);
 
 console.log('=== API CONFIGURATION ===');
 console.log('Environment:', import.meta.env.MODE);
