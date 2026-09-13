@@ -57,8 +57,7 @@ export default function ParentChildrenPage() {
                   <h2 className="font-semibold text-gray-900">{child.first_name} {child.last_name}</h2>
                   <p className="text-xs text-gray-400">{child.admission_number}</p>
                 </div>
-              </div>
-              </div>
+                </div>
               <div className="space-y-1 text-sm text-gray-600">
                 {child.class_name && <p>Class: <span className="font-medium">{child.class_name}</span></p>}
                 {child.section_name && <p>Section: <span className="font-medium">{child.section_name}</span></p>}
