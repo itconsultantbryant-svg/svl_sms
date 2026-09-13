@@ -3,6 +3,7 @@ import path from 'path';
 import { schemaV2Consolidated } from './schema-v2-consolidated';
 import { homeworkAssignmentsSchema } from './schema-homework-assignments';
 import { gradebookLessonPermsSchema } from './schema-gradebook-lesson-perms';
+import { ensurePortalRole } from '../utils/userAccess';
 
 let db: Database.Database;
 
@@ -28,6 +29,13 @@ export function migrateInstitutionBranding(database?: Database.Database): void {
   ensureColumn(target, 'institutions', 'primary_color', "TEXT DEFAULT '#1e40af'");
   ensureColumn(target, 'institutions', 'secondary_color', "TEXT DEFAULT '#3b82f6'");
   ensureColumn(target, 'institutions', 'accent_color', "TEXT DEFAULT '#f59e0b'");
+  ensureColumn(target, 'users', 'extra_permissions', 'TEXT');
+  ensureColumn(target, 'students', 'is_active', 'INTEGER DEFAULT 1');
+  try {
+    target.prepare(`UPDATE students SET is_active = CASE WHEN status IS NULL OR status = 'active' THEN 1 ELSE 0 END`).run();
+  } catch {
+    // status column may be missing on older rows; default is_active is enough
+  }
 }
 
 export function initializeDatabase(): void {
@@ -50,4 +58,11 @@ function backfillUserRoles(database: Database.Database): void {
     INSERT OR IGNORE INTO user_roles (user_id, role_id, is_primary)
     SELECT id, role_id, 1 FROM users WHERE role_id IS NOT NULL
   `).run();
+
+  const institutions = database.prepare('SELECT id FROM institutions').all() as Array<{ id: string }>;
+  for (const inst of institutions) {
+    ensurePortalRole(inst.id, 'student', 'Student');
+    ensurePortalRole(inst.id, 'parent', 'Parent');
+    ensurePortalRole(inst.id, 'teacher', 'Teacher');
+  }
 }

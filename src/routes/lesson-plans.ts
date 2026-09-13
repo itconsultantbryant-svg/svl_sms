@@ -212,6 +212,62 @@ lessonPlansRouter.post('/:id/seen', authorize('teacher'), (req: AuthRequest, res
   res.json({ message: 'Marked as seen' });
 });
 
+lessonPlansRouter.post('/import', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  const rows = req.body.rows;
+  if (!Array.isArray(rows) || !rows.length) {
+    res.status(400).json({ error: 'rows[] is required' });
+    return;
+  }
+  const db = getDatabase();
+  const created: string[] = [];
+  const errors: string[] = [];
+
+  for (const row of rows) {
+    const title = row.title;
+    if (!title) {
+      errors.push('A row is missing a title');
+      continue;
+    }
+    const classId = row.class || row.class_name
+      ? (db.prepare(`SELECT id FROM classes WHERE institution_id = ? AND LOWER(name) = LOWER(?)`).get(req.institution_id, row.class || row.class_name) as any)?.id
+      : null;
+    const subjectId = row.subject || row.subject_name
+      ? (db.prepare(`SELECT id FROM subjects WHERE institution_id = ? AND LOWER(name) = LOWER(?)`).get(req.institution_id, row.subject || row.subject_name) as any)?.id
+      : null;
+    const teacherNames = String(row.teachers || row.teacher || '').split(/[;,|]/).map((s) => s.trim()).filter(Boolean);
+    const teacherIds: string[] = [];
+    for (const name of teacherNames) {
+      const teacher = db.prepare(`
+        SELECT id FROM employees
+        WHERE institution_id = ? AND is_teacher = 1
+          AND (LOWER(first_name || ' ' || last_name) = LOWER(?) OR LOWER(employee_id) = LOWER(?))
+        LIMIT 1
+      `).get(req.institution_id, name, name) as any;
+      if (teacher) teacherIds.push(teacher.id);
+      else errors.push(`Teacher not found: ${name}`);
+    }
+
+    const id = generateId();
+    db.prepare(`
+      INSERT INTO lesson_plans (
+        id, institution_id, title, description, class_id, subject_id, created_by, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, req.institution_id, title, row.description || null,
+      classId || null, subjectId || null, req.user!.id,
+      teacherIds.length ? 'sent' : 'draft'
+    );
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO lesson_plan_recipients (id, lesson_plan_id, teacher_id, sent_at)
+      VALUES (?, ?, ?, datetime('now'))
+    `);
+    for (const tid of teacherIds) insert.run(generateId(), id, tid);
+    created.push(id);
+  }
+
+  res.status(created.length ? 201 : 400).json({ created, errors });
+});
+
 lessonPlansRouter.delete('/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   const db = getDatabase();
   const plan = db.prepare(`SELECT * FROM lesson_plans WHERE id = ?`).get(req.params.id) as any;

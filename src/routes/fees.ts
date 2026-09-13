@@ -4,6 +4,45 @@ import { AuthRequest, authorize } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId, paginate } from '../utils/helpers';
 
+function normalizePaymentMethod(method?: string): string {
+  const key = String(method || 'cash').toLowerCase().replace(/\s+/g, '_');
+  const map: Record<string, string> = {
+    cash: 'cash',
+    bank: 'bank',
+    bank_transfer: 'bank',
+    transfer: 'bank',
+    mobile_money: 'mobile_money',
+    momo: 'mobile_money',
+    card: 'card',
+    check: 'cheque',
+    cheque: 'cheque',
+    other: 'other',
+  };
+  return map[key] || 'cash';
+}
+
+function canAccessStudentFees(req: AuthRequest, studentId: string): boolean {
+  if (req.user?.user_type === 'platform_admin' || req.user?.user_type === 'institution_admin') return true;
+  const db = getDatabase();
+  if (req.user?.user_type === 'student') {
+    const own = db.prepare(`
+      SELECT id FROM students
+      WHERE id = ? AND (
+        user_id = ?
+        OR admission_number = (SELECT username FROM users WHERE id = ?)
+      )
+    `).get(studentId, req.user.id, req.user.id);
+    return !!own;
+  }
+  if (req.user?.user_type === 'parent') {
+    const link = db.prepare(`
+      SELECT id FROM parent_students WHERE parent_id = ? AND student_id = ?
+    `).get(req.user.id, studentId);
+    return !!link;
+  }
+  return false;
+}
+
 export const feesRouter = Router();
 
 // Apply tenant middleware to ALL fee routes
@@ -104,7 +143,12 @@ feesRouter.get('/invoices', (req: AuthRequest, res: Response) => {
   let where = 'WHERE i.institution_id = ?';
   const params: any[] = [req.institution_id];
   if (student_id) { where += ' AND i.student_id = ?'; params.push(student_id); }
-  if (status) { where += ' AND i.status = ?'; params.push(status); }
+  if (status === 'outstanding') {
+    where += ` AND i.status IN ('unpaid', 'partial', 'overdue')`;
+  } else if (status) {
+    where += ' AND i.status = ?';
+    params.push(status);
+  }
   if (session_id) { where += ' AND i.session_id = ?'; params.push(session_id); }
   if (class_id) { where += ' AND s.class_id = ?'; params.push(class_id); }
 
@@ -256,7 +300,7 @@ feesRouter.get('/payments', (req: AuthRequest, res: Response) => {
   res.json({ data: payments, total: total.count, page: parseInt(page), limit: lim });
 });
 
-feesRouter.post('/payments', authorize('platform_admin', 'institution_admin', 'accountant'), (req: AuthRequest, res: Response) => {
+feesRouter.post('/payments', (req: AuthRequest, res: Response) => {
   const { invoice_id, amount, payment_method, payment_date, reference_number, notes } = req.body;
   if (!invoice_id || !amount || !payment_date) {
     res.status(400).json({ error: 'Invoice, amount, and payment date are required' });
@@ -266,26 +310,94 @@ feesRouter.post('/payments', authorize('platform_admin', 'institution_admin', 'a
   const db = getDatabase();
   const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND institution_id = ?').get(invoice_id, req.institution_id) as any;
   if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
-  if (amount > invoice.balance) { res.status(400).json({ error: 'Payment amount exceeds balance' }); return; }
+
+  const isStaff = ['platform_admin', 'institution_admin', 'accountant', 'staff'].includes(req.user?.user_type || '')
+    || (req.user?.role_codes || []).some((c) => ['accountant', 'finance_officer', 'finance'].includes(c));
+  if (!isStaff && !canAccessStudentFees(req, invoice.student_id)) {
+    res.status(403).json({ error: 'You can only pay invoices for your own student record' });
+    return;
+  }
+
+  const payAmount = Number(amount);
+  if (!payAmount || payAmount <= 0) {
+    res.status(400).json({ error: 'Amount must be greater than zero' });
+    return;
+  }
+  if (payAmount > Number(invoice.balance || 0) + 0.001) {
+    res.status(400).json({ error: 'Payment amount exceeds balance' });
+    return;
+  }
 
   const paymentId = generateId();
   const paymentNumber = `PAY-${Date.now().toString(36).toUpperCase()}`;
+  const method = normalizePaymentMethod(payment_method);
 
   const transaction = db.transaction(() => {
     db.prepare(`
-      INSERT INTO payments (id, institution_id, payment_number, invoice_id, student_id, amount, payment_method, payment_date, reference_number, received_by, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(paymentId, req.institution_id, paymentNumber, invoice_id, invoice.student_id, amount, payment_method || 'cash', payment_date, reference_number || null, req.user?.id || null, notes || null);
+      INSERT INTO payments (id, institution_id, payment_number, invoice_id, student_id, amount, payment_method, payment_date, reference_number, received_by, notes, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')
+    `).run(paymentId, req.institution_id, paymentNumber, invoice_id, invoice.student_id, payAmount, method, payment_date, reference_number || null, req.user?.id || null, notes || null);
 
-    const newPaid = invoice.paid_amount + amount;
-    const newBalance = invoice.total_amount - invoice.discount_amount - newPaid;
-    const newStatus = newBalance <= 0 ? 'paid' : 'partial';
+    const newPaid = Number(invoice.paid_amount || 0) + payAmount;
+    const newBalance = Number(invoice.total_amount || 0) - Number(invoice.discount_amount || 0) - newPaid;
+    const newStatus = newBalance <= 0.001 ? 'paid' : 'partial';
 
     db.prepare(`UPDATE invoices SET paid_amount = ?, balance = ?, status = ?, updated_at = datetime('now') WHERE id = ?`).run(newPaid, Math.max(0, newBalance), newStatus, invoice_id);
   });
 
-  transaction();
+  try {
+    transaction();
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to record payment' });
+    return;
+  }
   res.status(201).json({ id: paymentId, payment_number: paymentNumber, message: 'Payment recorded successfully' });
+});
+
+feesRouter.get('/mine', (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  let studentIds: string[] = [];
+  if (req.user?.user_type === 'student') {
+    const row = db.prepare(`
+      SELECT id FROM students
+      WHERE institution_id = ? AND (
+        user_id = ?
+        OR admission_number = (SELECT username FROM users WHERE id = ?)
+        OR id = (SELECT linked_entity_id FROM users WHERE id = ? AND linked_entity_type = 'student')
+      )
+    `).get(req.institution_id, req.user.id, req.user.id, req.user.id) as any;
+    if (row) studentIds = [row.id];
+  } else if (req.user?.user_type === 'parent') {
+    const rows = db.prepare(`
+      SELECT student_id FROM parent_students WHERE parent_id = ? AND institution_id = ?
+    `).all(req.user.id, req.institution_id) as Array<{ student_id: string }>;
+    studentIds = rows.map((r) => r.student_id);
+  } else {
+    res.status(403).json({ error: 'Students and parents only' });
+    return;
+  }
+
+  if (!studentIds.length) {
+    res.json({ invoices: [], payments: [] });
+    return;
+  }
+  const placeholders = studentIds.map(() => '?').join(',');
+  const invoices = db.prepare(`
+    SELECT i.*, s.first_name, s.last_name, s.admission_number
+    FROM invoices i
+    JOIN students s ON s.id = i.student_id
+    WHERE i.institution_id = ? AND i.student_id IN (${placeholders})
+    ORDER BY i.created_at DESC
+  `).all(req.institution_id, ...studentIds);
+  const payments = db.prepare(`
+    SELECT p.*, i.invoice_number, s.first_name, s.last_name
+    FROM payments p
+    LEFT JOIN invoices i ON i.id = p.invoice_id
+    LEFT JOIN students s ON s.id = p.student_id
+    WHERE p.institution_id = ? AND p.student_id IN (${placeholders})
+    ORDER BY p.payment_date DESC
+  `).all(req.institution_id, ...studentIds);
+  res.json({ invoices, payments });
 });
 
 feesRouter.get('/payments/:id/receipt', (req: AuthRequest, res: Response) => {

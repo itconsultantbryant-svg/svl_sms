@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import { parseSpreadsheetFile, downloadTextFile } from '../../utils/spreadsheet';
 
 type ColumnDraft = { name: string; weight: number; max_score: number };
 
@@ -57,7 +58,28 @@ export default function GradebookAdminPage() {
     enabled: !!form.session_id,
   });
 
-  const weightSum = useMemo(() => columns.reduce((s, c) => s + Number(c.weight || 0), 0), [columns]);
+  const importFile = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const rows = await parseSpreadsheetFile(file);
+      const res = await api.post('/gradebook/import', { rows });
+      const created = res.data.created?.length || 0;
+      const errors = res.data.errors || [];
+      if (created) toast.success(`Created ${created} gradebook(s)`);
+      if (errors.length) toast.error(errors[0]);
+      if (!created && !errors.length) toast.error('No gradebooks created');
+      refetch();
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || e.message || 'Import failed');
+    }
+  };
+
+  const downloadTemplate = () => {
+    downloadTextFile(
+      'gradebook-template.csv',
+      'class,subject,teacher,session,term,column,weight,max_score\nGrade 10,Mathematics,Jane Doe,2026,Term 1,Quiz,10,100\nGrade 10,Mathematics,Jane Doe,2026,Term 1,Homework,20,100\nGrade 10,Mathematics,Jane Doe,2026,Term 1,Midterm,30,100\nGrade 10,Mathematics,Jane Doe,2026,Term 1,Exam,40,100\n'
+    );
+  };
 
   const generate = async () => {
     if (Math.abs(weightSum - 100) > 0.01) {
@@ -109,6 +131,11 @@ export default function GradebookAdminPage() {
           <p className="text-sm text-gray-500 mt-1">Assign weighted gradebooks to class, subject, and teacher</p>
         </div>
         <div className="flex gap-2">
+          <button type="button" className="btn-secondary" onClick={downloadTemplate}>CSV template</button>
+          <label className="btn-secondary cursor-pointer">
+            Import CSV/Excel
+            <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => importFile(e.target.files?.[0] || null)} />
+          </label>
           {(['list', 'generate', 'pending'] as const).map((t) => (
             <button
               key={t}

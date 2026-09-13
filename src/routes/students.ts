@@ -4,7 +4,7 @@ import { getDatabase } from '../database/init';
 import { AuthRequest } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId, generateAdmissionNumber, generateDefaultPassword, paginate, buildSearchQuery } from '../utils/helpers';
-import { ensureUserRole } from '../utils/userAccess';
+import { ensureUserRole, ensurePortalRole } from '../utils/userAccess';
 
 export const studentsRouter = Router();
 
@@ -151,17 +151,7 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
     );
 
     // Login user: Student ID (admission_number) + default password
-    let studentRole = db.prepare(
-      'SELECT id FROM roles WHERE institution_id = ? AND role_code = ?'
-    ).get(req.institution_id, 'student') as any;
-    if (!studentRole) {
-      const roleId = generateId();
-      db.prepare(`
-        INSERT INTO roles (id, institution_id, role_code, role_name, description, role_level, is_active, permissions)
-        VALUES (?, ?, 'student', 'Student', 'Student portal access', 'institution', 1, ?)
-      `).run(roleId, req.institution_id, JSON.stringify(['gradebook.view', 'assignments.view']));
-      studentRole = { id: roleId };
-    }
+    const studentRoleId = ensurePortalRole(req.institution_id, 'student', 'Student');
 
     const passwordHash = bcrypt.hashSync(temporary_password, 10);
     const loginEmail = email || `${admission_number.toLowerCase()}@student.local`;
@@ -182,10 +172,10 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
       last_name,
       phone || null,
       photo || null,
-      studentRole.id,
+      studentRoleId,
       id
     );
-    ensureUserRole(userId, studentRole.id, true);
+    ensureUserRole(userId, studentRoleId, true);
     db.prepare(`UPDATE students SET user_id = ? WHERE id = ?`).run(userId, id);
 
     if (parent) {
@@ -208,18 +198,9 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
         parent.occupation || null
       );
       db.prepare('INSERT INTO student_parents (student_id, parent_id, is_primary) VALUES (?, ?, 1)').run(id, parentId);
+      db.prepare('UPDATE parents SET user_id = ? WHERE id = ?').run(parentUserId, parentId);
 
-      let parentRole = db.prepare(
-        'SELECT id FROM roles WHERE institution_id = ? AND role_code = ?'
-      ).get(req.institution_id, 'parent') as any;
-      if (!parentRole) {
-        const roleId = generateId();
-        db.prepare(`
-          INSERT INTO roles (id, institution_id, role_code, role_name, description, role_level, is_active, permissions)
-          VALUES (?, ?, 'parent', 'Parent', 'Parent portal access', 'institution', 1, ?)
-        `).run(roleId, req.institution_id, JSON.stringify([]));
-        parentRole = { id: roleId };
-      }
+      let parentRoleId = ensurePortalRole(req.institution_id, 'parent', 'Parent');
 
       const parentUsername = parent.email
         ? String(parent.email).split('@')[0].toLowerCase().replace(/[^a-z0-9._]/g, '')
@@ -244,10 +225,10 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
         parent.first_name,
         parent.last_name,
         parent.phone || null,
-        parentRole.id,
+        parentRoleId,
         parentId
       );
-      ensureUserRole(parentUserId, parentRole.id, true);
+      ensureUserRole(parentUserId, parentRoleId, true);
 
       db.prepare(`
         INSERT INTO parent_students (id, institution_id, parent_id, student_id, relationship, is_primary)

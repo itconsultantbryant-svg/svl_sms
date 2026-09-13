@@ -5,7 +5,7 @@ import React from 'react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 
-type Tab = 'overview' | 'income' | 'expenses' | 'ledger';
+type Tab = 'overview' | 'income' | 'expenses' | 'categories' | 'ledger';
 
 export default function AccountsPage() {
   const [tab, setTab] = useState<Tab>('overview');
@@ -24,7 +24,7 @@ export default function AccountsPage() {
       </div>
 
       <div className="flex gap-2 border-b border-gray-200">
-        {(['overview', 'income', 'expenses', 'ledger'] as Tab[]).map(t => (
+        {(['overview', 'income', 'expenses', 'categories', 'ledger'] as Tab[]).map(t => (
           <button key={t} onClick={() => { setTab(t); setShowForm(false); }} className={`px-4 py-2 text-sm font-medium border-b-2 capitalize ${tab === t ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'}`}>{t}</button>
         ))}
       </div>
@@ -43,6 +43,7 @@ export default function AccountsPage() {
       {tab === 'overview' && <OverviewTab dateRange={dateRange} />}
       {tab === 'income' && <IncomeTab dateRange={dateRange} showForm={showForm} setShowForm={setShowForm} />}
       {tab === 'expenses' && <ExpensesTab dateRange={dateRange} showForm={showForm} setShowForm={setShowForm} />}
+      {tab === 'categories' && <CategoriesTab />}
       {tab === 'ledger' && <LedgerTab dateRange={dateRange} />}
     </div>
   );
@@ -403,6 +404,59 @@ function LedgerTab({ dateRange }: { dateRange: any }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function CategoriesTab() {
+  const queryClient = useQueryClient();
+  const [kind, setKind] = useState<'income' | 'expense'>('income');
+  const [form, setForm] = useState({ name: '', description: '' });
+  const { data: income } = useQuery<any[]>({
+    queryKey: ['income-categories'],
+    queryFn: () => api.get('/accounts/income-categories').then(r => r.data),
+  });
+  const { data: expense } = useQuery<any[]>({
+    queryKey: ['expense-categories'],
+    queryFn: () => api.get('/accounts/expense-categories').then(r => r.data),
+  });
+  const create = useMutation({
+    mutationFn: () => api.post(kind === 'income' ? '/accounts/income-categories' : '/accounts/expense-categories', form),
+    onSuccess: () => {
+      toast.success('Category created');
+      setForm({ name: '', description: '' });
+      queryClient.invalidateQueries({ queryKey: ['income-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['expense-categories'] });
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed'),
+  });
+  const rows = kind === 'income' ? income || [] : expense || [];
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button type="button" className={kind === 'income' ? 'btn-primary' : 'btn-secondary'} onClick={() => setKind('income')}>Income</button>
+        <button type="button" className={kind === 'expense' ? 'btn-primary' : 'btn-secondary'} onClick={() => setKind('expense')}>Expense</button>
+      </div>
+      <form className="card grid grid-cols-1 md:grid-cols-3 gap-3 items-end" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+        <div>
+          <label className="block text-sm font-medium mb-1">Category name *</label>
+          <input className="input-field" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Description</label>
+          <input className="input-field" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        </div>
+        <button className="btn-primary" type="submit">Create category</button>
+      </form>
+      <div className="card">
+        {rows.map((c: any) => (
+          <div key={c.id} className="py-2 border-b text-sm flex justify-between">
+            <span className="font-medium">{c.name}</span>
+            <span className="text-gray-500">{c.description || ''}</span>
+          </div>
+        ))}
+        {!rows.length && <p className="text-sm text-gray-400">No categories yet</p>}
       </div>
     </div>
   );

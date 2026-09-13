@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { TrendingUp } from 'lucide-react';
 import api from '../../utils/api';
+import { escapeHtml, openPrintDocument } from '../../utils/printDocument';
 
 export default function StudentGradesPage() {
   const { data, isLoading, error } = useQuery({
@@ -32,11 +33,27 @@ export default function StudentGradesPage() {
   const grades: any[] = data?.data || [];
   const gradebooks: any[] = gradebookData?.data || [];
 
+  const downloadSheet = () => {
+    openPrintDocument('Gradesheet', `
+      <h1>Gradesheet</h1>
+      <p class="meta">Approved term grades</p>
+      <table>
+        <thead><tr><th>Subject</th><th>Class</th><th>Term</th><th>%</th><th>Grade</th></tr></thead>
+        <tbody>${gradebooks.map((g: any) => `<tr><td>${escapeHtml(g.subject_name)}</td><td>${escapeHtml(g.class_name)}</td><td>${escapeHtml(g.term_name)}</td><td>${escapeHtml(g.computed_percent)}</td><td>${escapeHtml(g.letter_grade)}</td></tr>`).join('')}</tbody>
+      </table>
+    `);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <TrendingUp size={20} className="text-gray-600" />
-        <h1 className="text-xl font-bold text-gray-900">My Grades</h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <TrendingUp size={20} className="text-gray-600" />
+          <h1 className="text-xl font-bold text-gray-900">My Grades</h1>
+        </div>
+        <button type="button" className="btn-secondary text-sm" onClick={downloadSheet} disabled={!gradebooks.length}>
+          Preview / Download PDF
+        </button>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

@@ -296,7 +296,15 @@ dashboardRouter.get('/student', (req: AuthRequest, res: Response) => {
     try { return fn(); } catch { return fallback; }
   };
 
-  const student = safe(() => db.prepare(`SELECT id, class_id FROM students WHERE user_id = ? AND institution_id = ?`).get(userId, iid), null) as any;
+  const student = safe(() => db.prepare(`
+    SELECT id, class_id FROM students
+    WHERE institution_id = ?
+      AND (
+        user_id = ?
+        OR id = (SELECT linked_entity_id FROM users WHERE id = ? AND linked_entity_type = 'student')
+        OR admission_number = (SELECT username FROM users WHERE id = ?)
+      )
+  `).get(iid, userId, userId, userId), null) as any;
 
   res.json({
     pending_assignments: safe(() => (db.prepare(`
@@ -329,15 +337,13 @@ dashboardRouter.get('/parent', (req: AuthRequest, res: Response) => {
     try { return fn(); } catch { return fallback; }
   };
 
-  const parent = safe(() => db.prepare(`SELECT id FROM parents WHERE user_id = ? AND institution_id = ?`).get(userId, iid), null) as any;
-
   const children = safe(() => db.prepare(`
     SELECT s.id, s.first_name, s.last_name, s.admission_number, c.name as class_name
     FROM students s
-    JOIN student_parents sp ON sp.student_id = s.id
+    JOIN parent_students ps ON ps.student_id = s.id
     LEFT JOIN classes c ON c.id = s.class_id
-    WHERE sp.parent_id = ? AND s.institution_id = ?
-  `).all(parent?.id, iid), []);
+    WHERE ps.parent_id = ? AND ps.institution_id = ?
+  `).all(userId, iid), []);
 
   res.json({
     children_count: (children as any[]).length,

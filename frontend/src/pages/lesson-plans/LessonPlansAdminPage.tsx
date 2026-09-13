@@ -2,6 +2,8 @@ import { FormEvent, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import { parseSpreadsheetFile, downloadTextFile } from '../../utils/spreadsheet';
+import { escapeHtml, openPrintDocument } from '../../utils/printDocument';
 
 export default function LessonPlansAdminPage() {
   const qc = useQueryClient();
@@ -69,7 +71,27 @@ export default function LessonPlansAdminPage() {
     }
   };
 
-  const rows = data?.data || [];
+  const importFile = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const rows = await parseSpreadsheetFile(file);
+      const res = await api.post('/lesson-plans/import', { rows });
+      toast.success(`Imported ${res.data.created?.length || 0} lesson plan(s)`);
+      if (res.data.errors?.length) toast.error(res.data.errors[0]);
+      refetch();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Import failed');
+    }
+  };
+
+  const preview = (plan: any) => {
+    openPrintDocument(plan.title, `
+      <h1>${escapeHtml(plan.title)}</h1>
+      <p class="meta">${escapeHtml(plan.class_name || 'Any class')} · ${escapeHtml(plan.subject_name || 'Any subject')}</p>
+      <p>${escapeHtml(plan.description || '')}</p>
+      ${plan.file_data ? `<p><a href="${plan.file_data}" download="${escapeHtml(plan.file_name || 'attachment')}">Attachment</a></p>` : ''}
+    `);
+  };
 
   return (
     <div className="space-y-6">
@@ -78,6 +100,11 @@ export default function LessonPlansAdminPage() {
           <h1 className="text-2xl font-bold text-gray-900">Lesson Plans</h1>
           <p className="text-sm text-gray-500 mt-1">Create and send lesson plans to teachers</p>
         </div>
+        <button type="button" className="btn-secondary" onClick={() => downloadTextFile('lesson-plan-template.csv', 'title,description,class,subject,teachers\nWeek 1 Algebra,Introduce variables,Grade 10,Mathematics,Jane Doe\n')}>CSV template</button>
+        <label className="btn-secondary cursor-pointer">
+          Import CSV/Excel
+          <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => importFile(e.target.files?.[0] || null)} />
+        </label>
         <button type="button" className="btn-primary" onClick={() => setShowForm(!showForm)}>
           {showForm ? 'Cancel' : 'New Lesson Plan'}
         </button>
@@ -164,6 +191,7 @@ export default function LessonPlansAdminPage() {
                 <td className="py-2 pr-4">{p.recipient_count}</td>
                 <td className="py-2 pr-4 capitalize">{p.status}</td>
                 <td className="py-2">
+                  <button type="button" className="text-primary-600 mr-3" onClick={() => preview(p)}>Preview / PDF</button>
                   {p.file_data ? (
                     <a href={p.file_data} download={p.file_name || 'lesson-plan'} className="text-primary-600">
                       Download

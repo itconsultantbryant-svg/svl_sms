@@ -509,3 +509,139 @@ gradebookRouter.post('/:id/reject', authorize('platform_admin', 'institution_adm
 
   res.json({ message: 'Gradebook rejected — returned to teacher' });
 });
+
+function findIdByName(db: ReturnType<typeof getDatabase>, table: string, name: string, institutionId: string | null | undefined) {
+  if (!name) return null;
+  const row = db.prepare(`
+    SELECT id FROM ${table}
+    WHERE institution_id = ? AND LOWER(name) = LOWER(?)
+    LIMIT 1
+  `).get(institutionId, String(name).trim()) as any;
+  return row?.id || null;
+}
+
+gradebookRouter.post('/import', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  const rows = req.body.rows;
+  if (!Array.isArray(rows) || !rows.length) {
+    res.status(400).json({ error: 'rows[] is required' });
+    return;
+  }
+
+  const db = getDatabase();
+  const groups = new Map<string, any>();
+  for (const row of rows) {
+    const className = row.class || row.class_name;
+    const subjectName = row.subject || row.subject_name;
+    const teacherName = row.teacher || row.teacher_name;
+    const columnName = row.column || row.column_name || row.activity;
+    if (!className || !subjectName || !teacherName || !columnName) continue;
+    const key = [className, subjectName, teacherName, row.session || '', row.term || ''].join('|').toLowerCase();
+    if (!groups.has(key)) {
+      groups.set(key, {
+        className, subjectName, teacherName,
+        sessionName: row.session || row.session_name,
+        termName: row.term || row.term_name,
+        columns: [],
+      });
+    }
+    groups.get(key).columns.push({
+      name: columnName,
+      weight: Number(row.weight || 0),
+      max_score: Number(row.max_score || row.max || 100),
+    });
+  }
+
+  const created: any[] = [];
+  const errors: string[] = [];
+
+  for (const group of groups.values()) {
+    const classId = findIdByName(db, 'classes', group.className, req.institution_id);
+    const subjectId = findIdByName(db, 'subjects', group.subjectName, req.institution_id);
+    const sessionId = group.sessionName ? findIdByName(db, 'academic_sessions', group.sessionName, req.institution_id) : null;
+    const termId = group.termName ? findIdByName(db, 'terms', group.termName, req.institution_id) : null;
+    const teacher = db.prepare(`
+      SELECT id FROM employees
+      WHERE institution_id = ? AND is_teacher = 1
+        AND (
+          LOWER(first_name || ' ' || last_name) = LOWER(?)
+          OR LOWER(employee_id) = LOWER(?)
+          OR id IN (SELECT linked_entity_id FROM users WHERE LOWER(username) = LOWER(?) AND linked_entity_type = 'employee')
+        )
+      LIMIT 1
+    `).get(req.institution_id, group.teacherName, group.teacherName, group.teacherName) as any;
+
+    if (!classId || !subjectId || !teacher) {
+      errors.push(`Could not match class/subject/teacher for ${group.className} / ${group.subjectName} / ${group.teacherName}`);
+      continue;
+    }
+    const weightSum = group.columns.reduce((s: number, c: any) => s + Number(c.weight || 0), 0);
+    if (Math.abs(weightSum - 100) > 0.01) {
+      errors.push(`Weights for ${group.className} ${group.subjectName} sum to ${weightSum}, not 100`);
+      continue;
+    }
+
+    const id = generateId();
+    try {
+      const tx = db.transaction(() => {
+        db.prepare(`
+          INSERT INTO gradebooks (
+            id, institution_id, session_id, term_id, class_id, subject_id, teacher_id, status, generated_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?)
+        `).run(id, req.institution_id, sessionId, termId, classId, subjectId, teacher.id, req.user!.id);
+        const insertCol = db.prepare(`
+          INSERT INTO gradebook_columns (id, gradebook_id, name, weight, max_score, sort_order)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        group.columns.forEach((col: any, index: number) => {
+          insertCol.run(generateId(), id, col.name, col.weight, col.max_score, index);
+        });
+        if (sessionId) {
+          db.prepare(`
+            INSERT OR IGNORE INTO teacher_assignments (
+              id, institution_id, employee_id, class_id, subject_id, session_id, is_class_teacher
+            ) VALUES (?, ?, ?, ?, ?, ?, 0)
+          `).run(generateId(), req.institution_id, teacher.id, classId, subjectId, sessionId);
+        }
+      });
+      tx();
+      created.push({ id, class: group.className, subject: group.subjectName, teacher: group.teacherName });
+    } catch (e: any) {
+      errors.push(e.message || `Failed ${group.className} ${group.subjectName}`);
+    }
+  }
+
+  res.status(created.length ? 201 : 400).json({ created, errors });
+});
+
+gradebookRouter.get('/student/:studentId', (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  const studentId = req.params.studentId;
+  const isAdmin = req.user?.user_type === 'platform_admin' || req.user?.user_type === 'institution_admin';
+  const isSelf = db.prepare(`
+    SELECT id FROM students WHERE id = ? AND (
+      user_id = ? OR admission_number = (SELECT username FROM users WHERE id = ?)
+    )
+  `).get(studentId, req.user!.id, req.user!.id);
+  const isParent = db.prepare(`
+    SELECT id FROM parent_students WHERE parent_id = ? AND student_id = ?
+  `).get(req.user!.id, studentId);
+  if (!isAdmin && !isSelf && !isParent) {
+    res.status(403).json({ error: 'Not allowed to view this gradesheet' });
+    return;
+  }
+
+  const student = db.prepare(`
+    SELECT id, first_name, last_name, admission_number, photo FROM students WHERE id = ?
+  `).get(studentId);
+  const rows = db.prepare(`
+    SELECT gt.*, sub.name as subject_name, c.name as class_name, t.name as term_name, g.approved_at
+    FROM gradebook_totals gt
+    JOIN gradebooks g ON g.id = gt.gradebook_id
+    LEFT JOIN subjects sub ON sub.id = g.subject_id
+    LEFT JOIN classes c ON c.id = g.class_id
+    LEFT JOIN terms t ON t.id = g.term_id
+    WHERE gt.student_id = ? AND g.status = 'approved' AND g.institution_id = ?
+    ORDER BY g.approved_at DESC
+  `).all(studentId, req.institution_id);
+  res.json({ student, data: rows });
+});

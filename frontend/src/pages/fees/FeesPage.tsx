@@ -58,13 +58,13 @@ export default function FeesPage() {
           <p className="text-sm text-gray-500 mt-1">Manage fee types and structures</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary">
-          <Plus size={16} className="mr-2" /> {tab === 'types' ? 'Add Fee Type' : 'Add Structure'}
+          <Plus size={16} className="mr-2" /> {tab === 'types' ? 'Add Category' : 'Add Structure'}
         </button>
       </div>
 
       <div className="flex gap-2 border-b border-gray-200">
         <button onClick={() => setTab('structures')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'structures' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'}`}>Fee Structures</button>
-        <button onClick={() => setTab('types')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'types' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'}`}>Fee Types</button>
+        <button onClick={() => setTab('types')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'types' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'}`}>Categories</button>
       </div>
 
       {showForm && tab === 'types' && (

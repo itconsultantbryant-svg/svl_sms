@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { escapeHtml, openPrintDocument } from '../../utils/printDocument';
 
 export default function GradebookEntryPage() {
   const { id } = useParams();
@@ -68,7 +69,30 @@ export default function GradebookEntryPage() {
     }
   };
 
+  const exportPdf = () => {
+    const cols = data.columns || [];
+    const header = cols.map((c: any) => `<th>${escapeHtml(c.name)} (${c.weight}%)</th>`).join('');
+    const body = (data.students || []).map((s: any) => {
+      const cells = cols.map((c: any) => `<td>${escapeHtml(scores[`${s.id}:${c.id}`] || '')}</td>`).join('');
+      const total = totalsByStudent[s.id];
+      return `<tr><td>${escapeHtml(s.last_name)}, ${escapeHtml(s.first_name)}</td>${cells}<td>${escapeHtml(total?.computed_percent ?? '')}</td><td>${escapeHtml(total?.letter_grade ?? '')}</td></tr>`;
+    }).join('');
+    openPrintDocument(`${data.subject_name} gradebook`, `
+      <h1>${escapeHtml(data.subject_name)} — ${escapeHtml(data.class_name)}</h1>
+      <p class="meta">${escapeHtml(data.term_name || '')} · Status: ${escapeHtml(data.status)}</p>
+      <table><thead><tr><th>Student</th>${header}<th>Total %</th><th>Grade</th></tr></thead><tbody>${body}</tbody></table>
+    `);
+  };
+
   const approve = async () => {
+    try {
+      await api.post(`/gradebook/${id}/approve`);
+      toast.success('Approved');
+      refetch();
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Approve failed');
+    }
+  };
     try {
       await api.post(`/gradebook/${id}/approve`);
       toast.success('Approved');
@@ -102,6 +126,7 @@ export default function GradebookEntryPage() {
               <button type="button" className="btn-primary" onClick={submit}>Submit for approval</button>
             </>
           )}
+          <button type="button" className="btn-secondary" onClick={exportPdf}>Preview / Download PDF</button>
           {isAdmin && data.status === 'submitted' && (
             <button type="button" className="btn-primary" onClick={approve}>Approve</button>
           )}

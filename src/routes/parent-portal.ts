@@ -51,7 +51,8 @@ parentPortalRouter.get('/children', (req: AuthRequest, res: Response) => {
     LEFT JOIN sections sec ON s.section_id = sec.id
     LEFT JOIN branches b ON s.branch_id = b.id
     LEFT JOIN academic_sessions sess ON s.session_id = sess.id
-    WHERE ps.parent_id = ? AND ps.institution_id = ? AND s.is_active = 1
+    WHERE ps.parent_id = ? AND ps.institution_id = ?
+      AND (s.status IS NULL OR s.status = 'active')
     ORDER BY ps.is_primary DESC, s.first_name
   `).all(req.user!.id, req.institution_id);
 

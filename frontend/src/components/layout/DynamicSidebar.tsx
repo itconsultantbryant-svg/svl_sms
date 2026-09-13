@@ -123,9 +123,11 @@ function buildNavigation(homePath: string): MenuItem[] {
     {
       name: 'Employee',
       icon: Briefcase,
+      permission: 'teachers.view',
       userTypes: ['platform_admin', 'institution_admin'],
       children: [
         { name: 'Teachers', href: '/teachers' },
+        { name: 'Departments', href: '/academics/departments' },
         { name: 'Payroll', href: '/payroll' },
       ],
     },
@@ -231,15 +233,23 @@ function buildNavigation(homePath: string): MenuItem[] {
       userTypes: ['platform_admin', 'institution_admin'],
     },
     {
+      name: 'Users',
+      href: '/users',
+      icon: Users,
+      userTypes: ['platform_admin', 'institution_admin'],
+    },
+    {
       name: 'Gradebook',
       href: '/gradebook',
       icon: ClipboardList,
+      permission: 'gradebook.manage',
       userTypes: ['platform_admin', 'institution_admin'],
     },
     {
       name: 'Lesson Plans',
       href: '/lesson-plans',
       icon: BookOpen,
+      permission: 'lesson_plans.manage',
       userTypes: ['platform_admin', 'institution_admin'],
     },
     { name: 'My Classes', href: '/teacher/classes', icon: BookMarked, userTypes: ['teacher'] },
@@ -247,9 +257,11 @@ function buildNavigation(homePath: string): MenuItem[] {
     { name: 'My Gradebook', href: '/teacher/gradebook', icon: ClipboardList, userTypes: ['teacher'] },
     { name: 'Lesson Plans', href: '/teacher/lesson-plans', icon: BookOpen, userTypes: ['teacher'] },
     { name: 'My Grades', href: '/student/grades', icon: TrendingUp, userTypes: ['student'] },
+    { name: 'My Fees', href: '/student/fees', icon: DollarSign, userTypes: ['student'] },
     { name: 'My Assignments', href: '/student/assignments', icon: CheckSquare, userTypes: ['student'] },
     { name: 'My Attendance', href: '/student/attendance', icon: Calendar, userTypes: ['student'] },
     { name: 'My Children', href: '/parent/children', icon: Users, userTypes: ['parent'] },
+    { name: 'Fees & Payments', href: '/parent/fees', icon: DollarSign, userTypes: ['parent'] },
     { name: 'Change Password', href: '/account/password', icon: Settings, userTypes: ['platform_admin', 'institution_admin', 'teacher', 'student', 'parent', 'staff', 'branch_admin'] },
   ];
 }
@@ -317,16 +329,22 @@ export default function DynamicSidebar({ open, onClose }: SidebarProps) {
   const shouldShowItem = (item: MenuItem): boolean => {
     if (!user) return false;
 
-    if (item.excludeRoleCodes?.some((c) => mergedCodes.includes(c))) return false;
+    const typeMatch = !item.userTypes?.length || item.userTypes.some((t) => effectiveUserTypes.has(t));
+    const roleMatch = !!item.roleCodes?.length && item.roleCodes.some((c) => mergedCodes.includes(c));
+    const permGranted = !!item.permission && hasPermission(item.permission);
 
-    if (item.roleCodes?.length) {
-      return item.roleCodes.some((c) => mergedCodes.includes(c)) && hasPermission(item.permission);
-    }
-
-    if (item.userTypes?.length && !item.userTypes.some((t) => effectiveUserTypes.has(t))) {
+    if (item.excludeRoleCodes?.some((c) => mergedCodes.includes(c)) && !permGranted && !roleMatch) {
       return false;
     }
 
+    if (item.roleCodes?.length) {
+      return roleMatch && hasPermission(item.permission);
+    }
+
+    // Assigned permissions reveal the matching sidebar section even if user type differs
+    if (permGranted) return true;
+
+    if (item.userTypes?.length && !typeMatch) return false;
     return hasPermission(item.permission);
   };
 

@@ -30,8 +30,15 @@ function getStudentRecord(req: AuthRequest, res: Response, next: any) {
     LEFT JOIN sections sec ON s.section_id = sec.id
     LEFT JOIN branches b ON s.branch_id = b.id
     LEFT JOIN academic_sessions sess ON s.session_id = sess.id
-    WHERE s.user_id = ? AND s.institution_id = ? AND s.is_active = 1
-  `).get(req.user.id, req.institution_id) as any;
+    WHERE s.institution_id = ?
+      AND (s.is_active = 1 OR s.is_active IS NULL)
+      AND (s.status IS NULL OR s.status = 'active')
+      AND (
+        s.user_id = ?
+        OR s.id = (SELECT linked_entity_id FROM users WHERE id = ? AND linked_entity_type = 'student')
+        OR s.admission_number = (SELECT username FROM users WHERE id = ?)
+      )
+  `).get(req.institution_id, req.user.id, req.user.id, req.user.id) as any;
 
   if (!student) {
     res.status(404).json({ error: 'Student record not found' });

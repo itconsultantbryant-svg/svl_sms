@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { DollarSign, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 
 export default function PaymentsPage() {
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(location.pathname.endsWith('/collect'));
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [form, setForm] = useState({ invoice_id: '', amount: '', payment_method: 'cash', payment_date: '', reference_number: '', notes: '' });
   const [studentSearch, setStudentSearch] = useState('');
@@ -20,7 +22,7 @@ export default function PaymentsPage() {
 
   const { data: studentInvoices } = useQuery<any>({
     queryKey: ['student-invoices', selectedStudent?.id],
-    queryFn: () => api.get('/fees/invoices', { params: { student_id: selectedStudent.id, status: 'unpaid' } }).then(r => r.data),
+    queryFn: () => api.get('/fees/invoices', { params: { student_id: selectedStudent.id, status: 'outstanding', limit: 50 } }).then(r => r.data),
     enabled: !!selectedStudent,
   });
 
@@ -92,13 +94,16 @@ export default function PaymentsPage() {
               )}
             </div>
 
-            {selectedStudent && studentInvoices?.data?.length > 0 && (
+            {selectedStudent && !(studentInvoices?.data || []).some((i: any) => i.status !== 'paid' && Number(i.balance) > 0) && (
+              <p className="text-sm text-amber-700">No outstanding invoices for this student. Generate an invoice from Fee Setup first.</p>
+            )}
+            {selectedStudent && (studentInvoices?.data || []).some((i: any) => i.status !== 'paid' && Number(i.balance) > 0) && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Invoice *</label>
                 <select value={form.invoice_id} onChange={e => setForm(f => ({ ...f, invoice_id: e.target.value }))} className="input-field" required>
                   <option value="">Select Invoice</option>
-                  {studentInvoices.data.filter((i: any) => i.status !== 'paid').map((inv: any) => (
-                    <option key={inv.id} value={inv.id}>{inv.invoice_number} — Balance: ${inv.balance.toFixed(2)}</option>
+                  {studentInvoices.data.filter((i: any) => i.status !== 'paid' && Number(i.balance) > 0).map((inv: any) => (
+                    <option key={inv.id} value={inv.id}>{inv.invoice_number} — Balance: ${Number(inv.balance || 0).toFixed(2)}</option>
                   ))}
                 </select>
               </div>
@@ -114,9 +119,10 @@ export default function PaymentsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
               <select value={form.payment_method} onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))} className="input-field">
                 <option value="cash">Cash</option>
-                <option value="bank_transfer">Bank Transfer</option>
+                <option value="bank">Bank Transfer</option>
                 <option value="mobile_money">Mobile Money</option>
-                <option value="check">Check</option>
+                <option value="cheque">Cheque</option>
+                <option value="card">Card</option>
               </select>
             </div>
             <div>
@@ -166,7 +172,7 @@ export default function PaymentsPage() {
                   <td className="py-3 px-3 font-medium">{p.payment_number}</td>
                   <td className="py-3 px-3">{p.first_name} {p.last_name}</td>
                   <td className="py-3 px-3 text-gray-500">{p.invoice_number}</td>
-                  <td className="py-3 px-3 text-right font-medium text-green-600">${p.amount.toFixed(2)}</td>
+                  <td className="py-3 px-3 text-right font-medium text-green-600">${Number(p.amount || 0).toFixed(2)}</td>
                   <td className="py-3 px-3 capitalize">{p.payment_method?.replace('_', ' ')}</td>
                   <td className="py-3 px-3">{p.payment_date}</td>
                   <td className="py-3 px-3">

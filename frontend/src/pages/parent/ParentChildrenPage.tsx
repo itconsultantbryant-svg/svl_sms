@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Users } from 'lucide-react';
 import api from '../../utils/api';
+import { escapeHtml, openPrintDocument } from '../../utils/printDocument';
 
 export default function ParentChildrenPage() {
   const { data, isLoading, error } = useQuery({
@@ -56,12 +58,32 @@ export default function ParentChildrenPage() {
                   <p className="text-xs text-gray-400">{child.admission_number}</p>
                 </div>
               </div>
+              </div>
               <div className="space-y-1 text-sm text-gray-600">
                 {child.class_name && <p>Class: <span className="font-medium">{child.class_name}</span></p>}
                 {child.section_name && <p>Section: <span className="font-medium">{child.section_name}</span></p>}
                 {child.relationship && (
                   <p className="text-xs text-gray-400 capitalize">Relationship: {child.relationship}</p>
                 )}
+              </div>
+              <div className="mt-3 flex gap-3 text-sm">
+                <button
+                  type="button"
+                  className="text-primary-600"
+                  onClick={async () => {
+                    const res = await api.get(`/gradebook/student/${child.id}`);
+                    const rows = res.data.data || [];
+                    openPrintDocument(`${child.first_name} gradesheet`, `
+                      <h1>${escapeHtml(child.first_name)} ${escapeHtml(child.last_name)}</h1>
+                      <p class="meta">${escapeHtml(child.admission_number)} · Approved gradesheet</p>
+                      <table><thead><tr><th>Subject</th><th>Class</th><th>Term</th><th>%</th><th>Grade</th></tr></thead>
+                      <tbody>${rows.map((g: any) => `<tr><td>${escapeHtml(g.subject_name)}</td><td>${escapeHtml(g.class_name)}</td><td>${escapeHtml(g.term_name)}</td><td>${escapeHtml(g.computed_percent)}</td><td>${escapeHtml(g.letter_grade)}</td></tr>`).join('') || '<tr><td colspan="5">No approved grades yet</td></tr>'}</tbody></table>
+                    `);
+                  }}
+                >
+                  Download gradesheet
+                </button>
+                <Link to="/parent/fees" className="text-primary-600">Fees</Link>
               </div>
             </div>
           ))}

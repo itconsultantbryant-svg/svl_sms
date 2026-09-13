@@ -12,12 +12,15 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [schoolCode, setSchoolCode] = useState(searchParams.get('school') || localStorage.getItem('svl_school_code') || '');
+  const [schoolCode, setSchoolCode] = useState('');
+  const [showSchoolCode, setShowSchoolCode] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (schoolCode.trim()) {
-      loadBrandingByCode(schoolCode.trim());
+    const preset = searchParams.get('school') || '';
+    if (preset) {
+      setSchoolCode(preset);
+      loadBrandingByCode(preset);
     }
   }, []);
 
@@ -101,23 +104,32 @@ export default function LoginPage() {
             {branding?.institution_code && (
               <p className="text-xs text-gray-400 mt-1">Code: {branding.institution_code}</p>
             )}
-          </div>
-
-          <div className="mb-5">
-            <label className="block text-sm font-medium text-gray-700 mb-1">School Code</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={schoolCode}
-                onChange={(e) => setSchoolCode(e.target.value.toUpperCase())}
-                className="input-field"
-                placeholder="e.g. VHS"
-              />
-              <button type="button" onClick={handleLoadSchool} className="btn-secondary shrink-0">
-                Load
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 mt-1">Enter your school code to show school branding</p>
+            <button
+              type="button"
+              onClick={() => setShowSchoolCode((v) => !v)}
+              className="mt-3 text-xs font-medium underline"
+              style={{ color: primary }}
+            >
+              {branding?.institution_name ? 'Change school' : 'Have a school code?'}
+            </button>
+            {showSchoolCode && (
+              <div className="mt-3 text-left">
+                <label className="block text-xs font-medium text-gray-600 mb-1">School code (optional)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={schoolCode}
+                    onChange={(e) => setSchoolCode(e.target.value.toUpperCase())}
+                    className="input-field"
+                    placeholder="e.g. VHS"
+                  />
+                  <button type="button" onClick={handleLoadSchool} className="btn-secondary shrink-0">
+                    Load
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Loads the school logo, name, motto, and code. Not required to sign in.</p>
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

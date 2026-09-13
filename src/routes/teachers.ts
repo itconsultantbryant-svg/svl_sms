@@ -3,7 +3,7 @@ import { getDatabase } from '../database/init';
 import { AuthRequest, authorize } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId, generateEmployeeId, generateDefaultPassword, paginate, buildSearchQuery } from '../utils/helpers';
-import { ensureUserRole } from '../utils/userAccess';
+import { ensureUserRole, ensurePortalRole } from '../utils/userAccess';
 import bcrypt from 'bcryptjs';
 
 export const teachersRouter = Router();
@@ -99,7 +99,6 @@ teachersRouter.post('/', authorize('platform_admin', 'institution_admin', 'hr_ma
   const db = getDatabase();
   const id = generateId();
   const userId = generateId();
-  const roleId = generateId();
   const employee_id = generateEmployeeId('TCH');
 
   // Generate credentials if requested or not provided
@@ -127,7 +126,23 @@ teachersRouter.post('/', authorize('platform_admin', 'institution_admin', 'hr_ma
   }
 
   const transaction = db.transaction(() => {
-    // 1. Create employee record
+    const teacherRoleId = ensurePortalRole(req.institution_id, 'teacher', 'Teacher');
+    const passwordHash = bcrypt.hashSync(finalPassword, 10);
+    const loginEmail = email && String(email).trim() ? String(email).trim() : null;
+
+    // User must exist before employees.user_id FK is set
+    db.prepare(`
+      INSERT INTO users (
+        id, institution_id, branch_id, username, email, password_hash,
+        first_name, last_name, phone, avatar, role_id, user_type,
+        linked_entity_type, linked_entity_id, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'teacher', 'employee', ?, 1)
+    `).run(
+      userId, req.institution_id, branch_id || req.user?.branch_id || null, finalUsername, loginEmail, passwordHash,
+      first_name, last_name, phone || null, photo || null, teacherRoleId, id
+    );
+    ensureUserRole(userId, teacherRoleId, true);
+
     db.prepare(`
       INSERT INTO employees (id, institution_id, employee_id, first_name, middle_name, last_name, gender,
       date_of_birth, phone, email, address, photo, department_id, designation_id, branch_id,
@@ -136,41 +151,12 @@ teachersRouter.post('/', authorize('platform_admin', 'institution_admin', 'hr_ma
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
     `).run(
       id, req.institution_id, employee_id, first_name, middle_name || null, last_name, gender || null,
-      date_of_birth || null, phone || null, email || null, address || null, photo || null,
+      date_of_birth || null, phone || null, loginEmail, address || null, photo || null,
       department_id || null, designation_id || null, branch_id || req.user?.branch_id || null,
       qualification || null, experience || null, employment_date || null,
       employment_type || 'full-time', basic_salary || 0, bank_name || null, bank_account || null,
       userId
     );
-
-    // 2. Create or get teacher role
-    let teacherRole = db.prepare(
-      'SELECT id FROM roles WHERE institution_id = ? AND role_code = ?'
-    ).get(req.institution_id, 'teacher') as any;
-
-    if (!teacherRole) {
-      db.prepare(`
-        INSERT INTO roles (
-          id, institution_id, role_code, role_name, description, role_level, is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, 1)
-      `).run(roleId, req.institution_id, 'teacher', 'Teacher', 'Faculty member', 'institution');
-      teacherRole = { id: roleId };
-    }
-
-    // 3. Create user account
-    const passwordHash = bcrypt.hashSync(finalPassword, 10);
-    db.prepare(`
-      INSERT INTO users (
-        id, institution_id, branch_id, username, email, password_hash,
-        first_name, last_name, phone, role_id, user_type,
-        linked_entity_type, linked_entity_id, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(
-      userId, req.institution_id, branch_id || req.user?.branch_id, finalUsername, email, passwordHash,
-      first_name, last_name, phone, teacherRole.id, 'teacher',
-      'employee', id
-    );
-    ensureUserRole(userId, teacherRole.id, true);
   });
 
   try {

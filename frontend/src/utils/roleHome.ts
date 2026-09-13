@@ -22,6 +22,8 @@ export function getRoleHomePath(user: {
   }
   if (type === 'teacher' || codes.includes('teacher')) return '/teacher/dashboard';
   if (type === 'staff' || codes.some((c) => ['staff', 'receptionist', 'librarian', 'hr_manager'].includes(c))) {
+    const perms = (user as { permissions?: string[] }).permissions || [];
+    if (perms.includes('fees.view') || perms.includes('accounts.view')) return '/finance/dashboard';
     return '/staff/dashboard';
   }
   if (type === 'parent' || codes.includes('parent')) return '/parent/dashboard';

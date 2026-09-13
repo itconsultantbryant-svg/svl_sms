@@ -4,7 +4,7 @@ import { getDatabase } from '../database/init';
 import { AuthRequest, authorize } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId, generateDefaultPassword, paginate, buildSearchQuery } from '../utils/helpers';
-import { ensureUserRole, getMergedAccessForUser, setUserRoles } from '../utils/userAccess';
+import { ensureUserRole, getMergedAccessForUser, setUserRoles, setUserExtraPermissions } from '../utils/userAccess';
 
 export const usersRouter = Router();
 
@@ -86,7 +86,7 @@ usersRouter.get('/:id', authorize('platform_admin', 'institution_admin'), (req: 
 usersRouter.post('/', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   const {
     username, email, password, first_name, last_name, phone, role_id, role_ids,
-    branch_id, user_type, avatar
+    branch_id, user_type, avatar, extra_permissions
   } = req.body;
 
   if (!username || !first_name || !last_name || (!role_id && !(Array.isArray(role_ids) && role_ids.length))) {
@@ -95,10 +95,17 @@ usersRouter.post('/', authorize('platform_admin', 'institution_admin'), (req: Au
   }
 
   const db = getDatabase();
-  const existing = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email || '');
+  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
   if (existing) {
-    res.status(409).json({ error: 'Username or email already exists' });
+    res.status(409).json({ error: 'Username already exists' });
     return;
+  }
+  if (email) {
+    const emailTaken = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (emailTaken) {
+      res.status(409).json({ error: 'Email already exists' });
+      return;
+    }
   }
 
   const id = generateId();
@@ -132,6 +139,8 @@ usersRouter.post('/', authorize('platform_admin', 'institution_admin'), (req: Au
   );
 
   setUserRoles(id, rolesToSet);
+  if (Array.isArray(extra_permissions)) setUserExtraPermissions(id, extra_permissions);
+  if (Array.isArray(extra_permissions)) setUserExtraPermissions(id, extra_permissions);
 
   res.status(201).json({
     id,
@@ -143,7 +152,7 @@ usersRouter.post('/', authorize('platform_admin', 'institution_admin'), (req: Au
 
 usersRouter.put('/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { email, first_name, last_name, phone, role_id, role_ids, branch_id, is_active, avatar, user_type } = req.body;
+  const { email, first_name, last_name, phone, role_id, role_ids, branch_id, is_active, avatar, user_type, extra_permissions } = req.body;
 
   const db = getDatabase();
   const user = db.prepare('SELECT id FROM users WHERE id = ?').get(id);
@@ -166,6 +175,7 @@ usersRouter.put('/:id', authorize('platform_admin', 'institution_admin'), (req: 
   } else if (role_id) {
     ensureUserRole(id, role_id, true);
   }
+  if (Array.isArray(extra_permissions)) setUserExtraPermissions(id, extra_permissions);
 
   res.json({ message: 'User updated successfully' });
 });

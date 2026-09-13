@@ -1,4 +1,5 @@
 import { getDatabase } from '../database/init';
+import { generateId } from './helpers';
 
 export interface RoleInfo {
   id: string;
@@ -13,6 +14,75 @@ export interface MergedAccess {
   permissions: string[];
   role_codes: string[];
   primary_role_id: string | null;
+}
+
+export const PORTAL_PERMISSIONS: Record<string, string[]> = {
+  student: [
+    'dashboard.view',
+    'gradebook.view',
+    'assignments.view',
+    'attendance.view',
+    'fees.view',
+    'fees.collect',
+    'timetable.view',
+  ],
+  parent: [
+    'dashboard.view',
+    'gradebook.view',
+    'fees.view',
+    'fees.collect',
+    'students.view',
+    'attendance.view',
+    'timetable.view',
+  ],
+  teacher: [
+    'dashboard.view',
+    'students.view',
+    'attendance.view',
+    'attendance.mark',
+    'assignments.view',
+    'assignments.create',
+    'assignments.edit',
+    'assignments.grade',
+    'exams.view',
+    'marks.view',
+    'marks.enter',
+    'marks.edit',
+    'grades.view',
+    'grades.submit',
+    'gradebook.enter',
+    'gradebook.view',
+    'lesson_plans.view',
+    'timetable.view',
+    'communication.send',
+    'communication.view',
+    'reports.view',
+  ],
+};
+
+/** Create the portal role if missing and merge its default sidebar permissions. */
+export function ensurePortalRole(institutionId: string | null | undefined, code: string, name: string): string {
+  const db = getDatabase();
+  const required = PORTAL_PERMISSIONS[code] || ['dashboard.view'];
+  let role = db.prepare(
+    'SELECT id, permissions FROM roles WHERE institution_id = ? AND role_code = ?'
+  ).get(institutionId, code) as any;
+
+  if (!role) {
+    const id = generateId();
+    db.prepare(`
+      INSERT INTO roles (id, institution_id, role_code, role_name, description, role_level, is_active, permissions)
+      VALUES (?, ?, ?, ?, ?, 'institution', 1, ?)
+    `).run(id, institutionId, code, name, `${name} portal access`, JSON.stringify(required));
+    return id;
+  }
+
+  const current = parsePermissions(role.permissions);
+  const merged = Array.from(new Set([...current, ...required]));
+  if (merged.length !== current.length) {
+    db.prepare('UPDATE roles SET permissions = ? WHERE id = ?').run(JSON.stringify(merged), role.id);
+  }
+  return role.id;
 }
 
 function parsePermissions(raw: string | null | undefined): string[] {
@@ -67,6 +137,9 @@ export function getMergedAccessForUser(userId: string, primaryRoleId?: string | 
     }
   }
 
+  const extra = db.prepare('SELECT extra_permissions FROM users WHERE id = ?').get(userId) as any;
+  for (const p of parsePermissions(extra?.extra_permissions)) permSet.add(p);
+
   if (!primary_role_id && roles.length > 0) {
     primary_role_id = roles[0].id;
   }
@@ -100,6 +173,12 @@ export function setUserRoles(userId: string, roleIds: string[]): void {
     }
   });
   tx();
+}
+
+export function setUserExtraPermissions(userId: string, permissions: string[]): void {
+  const db = getDatabase();
+  db.prepare(`UPDATE users SET extra_permissions = ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(JSON.stringify(Array.from(new Set(permissions.filter(Boolean)))), userId);
 }
 
 export function ensureUserRole(userId: string, roleId: string, primary = true): void {

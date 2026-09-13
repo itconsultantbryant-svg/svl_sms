@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import { escapeHtml, openPrintDocument } from '../../utils/printDocument';
 
 export default function LessonPlansTeacherPage() {
   const { data, refetch, isLoading } = useQuery({
@@ -50,6 +51,13 @@ export default function LessonPlansTeacherPage() {
                   Open / Download
                 </a>
               )}
+              <button
+                type="button"
+                className="btn-secondary text-sm"
+                onClick={() => openPrintDocument(p.title, `<h1>${escapeHtml(p.title)}</h1><p>${escapeHtml(p.description || '')}</p>`)}
+              >
+                Preview / PDF
+              </button>
               {!p.seen_at && (
                 <button type="button" className="btn-secondary text-sm" onClick={() => markSeen(p.id)}>
                   Mark seen

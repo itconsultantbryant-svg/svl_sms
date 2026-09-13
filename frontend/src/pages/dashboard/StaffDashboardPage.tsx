@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Users, GraduationCap, UserCircle, ClipboardList, Library, ArrowRight } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import api from '../../utils/api';
 
 export default function StaffDashboardPage() {
+  const { user } = useAuth();
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -32,13 +34,14 @@ export default function StaffDashboardPage() {
     );
   }
 
+  const perms = new Set(user?.permissions || []);
   const cards = [
-    { label: 'Active Students', value: stats?.total_students, icon: GraduationCap, href: '/students' },
-    { label: 'Teachers', value: stats?.total_teachers, icon: UserCircle, href: '/teachers' },
-    { label: 'Open Enquiries', value: stats?.open_enquiries, icon: ClipboardList, href: '/admission/enquiries' },
-    { label: 'Visitors Today', value: stats?.visitors_today, icon: Users, href: '/reception' },
-    { label: 'Books Issued', value: stats?.library_issues, icon: Library, href: '/library' },
-  ];
+    { label: 'Active Students', value: stats?.total_students, icon: GraduationCap, href: '/students', show: !perms.size || perms.has('students.view') },
+    { label: 'Teachers', value: stats?.total_teachers, icon: UserCircle, href: '/teachers', show: !perms.size || perms.has('teachers.view') },
+    { label: 'Open Enquiries', value: stats?.open_enquiries, icon: ClipboardList, href: '/admission/enquiries', show: !perms.size || perms.has('students.view') },
+    { label: 'Visitors Today', value: stats?.visitors_today, icon: Users, href: '/reception', show: !perms.size },
+    { label: 'Books Issued', value: stats?.library_issues, icon: Library, href: '/library', show: !perms.size || perms.has('library.view') },
+  ].filter((c) => c.show);
 
   return (
     <div className="space-y-6">

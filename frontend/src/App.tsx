@@ -20,6 +20,9 @@ import TeacherFormPage from './pages/teachers/TeacherFormPage';
 import ClassesPage from './pages/academics/ClassesPage';
 import SubjectsPage from './pages/academics/SubjectsPage';
 import SessionsPage from './pages/academics/SessionsPage';
+import DepartmentsPage from './pages/academics/DepartmentsPage';
+import SchoolUsersPage from './pages/users/SchoolUsersPage';
+import PortalFeesPage from './pages/fees/PortalFeesPage';
 import BranchesPage from './pages/branches/BranchesPage';
 import SettingsPage from './pages/settings/SettingsPage';
 import AttendancePage from './pages/attendance/AttendancePage';
@@ -134,6 +137,8 @@ function AppContent() {
                 <Route path="/academics/classes" element={<ClassesPage />} />
                 <Route path="/academics/subjects" element={<SubjectsPage />} />
                 <Route path="/academics/sessions" element={<SessionsPage />} />
+                <Route path="/academics/departments" element={<DepartmentsPage />} />
+                <Route path="/users" element={<SchoolUsersPage />} />
 
                 <Route path="/attendance" element={<AttendancePage />} />
                 <Route path="/timetable" element={<TimetablePage />} />
@@ -149,6 +154,9 @@ function AppContent() {
                 <Route path="/fees" element={<FeesPage />} />
                 <Route path="/fees/invoices" element={<InvoicesPage />} />
                 <Route path="/fees/payments" element={<PaymentsPage />} />
+                <Route path="/fees/collect" element={<PaymentsPage />} />
+                <Route path="/student/fees" element={<PortalFeesPage />} />
+                <Route path="/parent/fees" element={<PortalFeesPage />} />
                 <Route path="/accounts" element={<AccountsPage />} />
 
                 <Route path="/library" element={<LibraryPage />} />
