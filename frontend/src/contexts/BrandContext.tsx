@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import api from '../utils/api';
+import { schoolCodeFromHostname } from '../utils/schoolHost';
 
 export interface SchoolBranding {
   institution_name?: string;
@@ -61,6 +62,9 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     if (b?.institution_code) {
       localStorage.setItem('svl_school_code', b.institution_code);
     }
+    if (b?.institution_name) {
+      document.title = `${b.institution_name} | SVL-SMS`;
+    }
   }, []);
 
   const loadBrandingByCode = useCallback(async (code: string) => {
@@ -103,7 +107,8 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     if (user && user.user_type !== 'platform_admin') {
       refreshBranding();
     } else if (!user) {
-      const code = localStorage.getItem('svl_school_code');
+      const fromHost = schoolCodeFromHostname(window.location.hostname);
+      const code = fromHost || localStorage.getItem('svl_school_code');
       if (code) loadBrandingByCode(code);
       else applyCssVars(null);
     } else {

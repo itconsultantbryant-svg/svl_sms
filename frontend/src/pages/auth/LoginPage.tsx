@@ -3,6 +3,7 @@ import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBrand } from '../../contexts/BrandContext';
 import { getRoleHomePath } from '../../utils/roleHome';
+import { schoolCodeFromHostname } from '../../utils/schoolHost';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
@@ -16,13 +17,15 @@ export default function LoginPage() {
   const [showSchoolCode, setShowSchoolCode] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const hostSchool = schoolCodeFromHostname(window.location.hostname);
+
   useEffect(() => {
-    const preset = searchParams.get('school') || '';
+    const preset = searchParams.get('school') || hostSchool || '';
     if (preset) {
       setSchoolCode(preset);
       loadBrandingByCode(preset);
     }
-  }, []);
+  }, [hostSchool, loadBrandingByCode, searchParams]);
 
   if (user) return <Navigate to={getRoleHomePath(user)} replace />;
 
@@ -104,6 +107,7 @@ export default function LoginPage() {
             {branding?.institution_code && (
               <p className="text-xs text-gray-400 mt-1">Code: {branding.institution_code}</p>
             )}
+            {!hostSchool && (
             <button
               type="button"
               onClick={() => setShowSchoolCode((v) => !v)}
@@ -112,6 +116,7 @@ export default function LoginPage() {
             >
               {branding?.institution_name ? 'Change school' : 'Have a school code?'}
             </button>
+            )}
             {showSchoolCode && (
               <div className="mt-3 text-left">
                 <label className="block text-xs font-medium text-gray-600 mb-1">School code (optional)</label>
