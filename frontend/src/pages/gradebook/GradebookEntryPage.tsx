@@ -93,14 +93,6 @@ export default function GradebookEntryPage() {
       toast.error(e.response?.data?.error || 'Approve failed');
     }
   };
-    try {
-      await api.post(`/gradebook/${id}/approve`);
-      toast.success('Approved');
-      refetch();
-    } catch (e: any) {
-      toast.error(e.response?.data?.error || 'Approve failed');
-    }
-  };
 
   if (isLoading || !data) {
     return <div className="p-8 text-center text-gray-500">Loading gradebook…</div>;
