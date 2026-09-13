@@ -160,7 +160,8 @@ function buildNavigation(homePath: string): MenuItem[] {
       name: 'Assignments',
       href: '/assignments',
       icon: CheckSquare,
-      userTypes: ['platform_admin', 'institution_admin', 'teacher'],
+      permission: 'assignments.view',
+      userTypes: ['platform_admin', 'institution_admin', 'teacher', 'staff'],
     },
     {
       name: 'Finance',

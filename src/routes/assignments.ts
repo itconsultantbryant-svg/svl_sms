@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { getDatabase } from '../database/init';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest, hasPermission } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId, paginate, buildSearchQuery } from '../utils/helpers';
 
@@ -10,14 +10,61 @@ export const assignmentsRouter = Router();
 assignmentsRouter.use(injectTenant);
 assignmentsRouter.use(requireTenant);
 
+function canManage(req: AuthRequest, action: 'create' | 'grade' | 'delete' = 'create') {
+  const type = req.user?.user_type;
+  if (type === 'teacher' || type === 'institution_admin' || type === 'platform_admin') return true;
+  if (action === 'grade') return hasPermission(req, 'assignments.grade');
+  if (action === 'delete') return hasPermission(req, 'assignments.delete') || hasPermission(req, 'assignments.edit');
+  return hasPermission(req, 'assignments.create') || hasPermission(req, 'assignments.edit');
+}
+
+function findStudent(db: any, req: AuthRequest) {
+  return db.prepare(`
+    SELECT id, class_id, section_id, user_id FROM students
+    WHERE institution_id = ?
+      AND (is_active = 1 OR is_active IS NULL)
+      AND (status IS NULL OR status = 'active')
+      AND (
+        user_id = ?
+        OR id = (SELECT linked_entity_id FROM users WHERE id = ? AND linked_entity_type = 'student')
+        OR admission_number = (SELECT username FROM users WHERE id = ?)
+      )
+    LIMIT 1
+  `).get(req.institution_id, req.user!.id, req.user!.id, req.user!.id) as any;
+}
+
+function currentSessionId(db: any, institutionId: string, requested?: string) {
+  if (requested) return requested;
+  const row = db.prepare(`
+    SELECT id FROM academic_sessions
+    WHERE institution_id = ?
+    ORDER BY is_current DESC, start_date DESC
+    LIMIT 1
+  `).get(institutionId) as any;
+  return row?.id || null;
+}
+
+function notify(db: any, institutionId: string, userId: string, title: string, message: string, entityId: string) {
+  try {
+    db.prepare(`
+      INSERT INTO notifications (
+        id, institution_id, user_id, title, message, type,
+        related_entity_type, related_entity_id
+      ) VALUES (?, ?, ?, ?, ?, 'assignment', 'assignment', ?)
+    `).run(generateId(), institutionId, userId, title, message, entityId);
+  } catch (error) {
+    console.warn('Assignment notification skipped:', error);
+  }
+}
+
 // ============================================
 // TEACHER - CREATE & MANAGE ASSIGNMENTS
 // ============================================
 
 // Create assignment (Teachers only)
 assignmentsRouter.post('/', (req: AuthRequest, res: Response) => {
-  if (req.user?.user_type !== 'teacher') {
-    res.status(403).json({ error: 'Only teachers can create assignments' });
+  if (!canManage(req, 'create')) {
+    res.status(403).json({ error: 'You do not have permission to create assignments' });
     return;
   }
 
@@ -29,38 +76,52 @@ assignmentsRouter.post('/', (req: AuthRequest, res: Response) => {
     WHERE user_id = ? AND institution_id = ? AND is_teacher = 1
   `).get(req.user.id, req.institution_id) as any;
 
-  if (!teacher) {
-    res.status(404).json({ error: 'Teacher record not found' });
-    return;
-  }
-
   const {
-    title, description, type, class_id, section_id, subject_id,
-    session_id, term_id, max_marks, assigned_date, due_date,
-    attachment_url, attachment_name
+    title, description, class_id, section_id, subject_id,
+    session_id, term_id, assigned_date, due_date,
+    attachment_url, attachment_name, teacher_id
   } = req.body;
+  const type = req.body.type || 'assignment';
+  const max_marks = Number(req.body.max_marks ?? req.body.max_score ?? 100);
+  const sessionId = currentSessionId(db, req.institution_id!, session_id);
 
-  if (!title || !type || !class_id || !subject_id || !session_id || !due_date) {
+  if (!title || !class_id || !subject_id || !due_date) {
     res.status(400).json({
-      error: 'Required fields missing',
-      required: ['title', 'type', 'class_id', 'subject_id', 'session_id', 'due_date']
+      error: 'Title, class, subject, and due date are required'
     });
     return;
   }
-
-  // Verify teacher is assigned to this class/subject
-  const assignment = db.prepare(`
-    SELECT id FROM teacher_assignments
-    WHERE employee_id = ? AND institution_id = ? AND class_id = ? AND subject_id = ?
-    ${section_id ? 'AND section_id = ?' : ''}
-  `).get(
-    section_id ? [teacher.id, req.institution_id, class_id, subject_id, section_id] :
-    [teacher.id, req.institution_id, class_id, subject_id]
-  );
-
-  if (!assignment) {
-    res.status(403).json({ error: 'You are not assigned to this class/subject' });
+  if (!sessionId) {
+    res.status(400).json({ error: 'Create an academic session before adding assignments' });
     return;
+  }
+
+  const isTeacherUser = req.user?.user_type === 'teacher';
+  let ownerId = teacher?.id || teacher_id || null;
+  if (isTeacherUser) {
+    if (!teacher) {
+      res.status(404).json({ error: 'Teacher record not found' });
+      return;
+    }
+    ownerId = teacher.id;
+    const assigned = db.prepare(`
+      SELECT id FROM teacher_assignments
+      WHERE employee_id = ? AND institution_id = ? AND class_id = ? AND subject_id = ?
+      ${section_id ? 'AND section_id = ?' : ''}
+    `).get(...(section_id
+      ? [teacher.id, req.institution_id, class_id, subject_id, section_id]
+      : [teacher.id, req.institution_id, class_id, subject_id]));
+    if (!assigned) {
+      res.status(403).json({ error: 'You are not assigned to this class and subject' });
+      return;
+    }
+  } else if (!ownerId) {
+    const assignedTeacher = db.prepare(`
+      SELECT employee_id FROM teacher_assignments
+      WHERE institution_id = ? AND class_id = ? AND subject_id = ?
+      LIMIT 1
+    `).get(req.institution_id, class_id, subject_id) as any;
+    ownerId = assignedTeacher?.employee_id || null;
   }
 
   const id = generateId();
@@ -73,40 +134,23 @@ assignmentsRouter.post('/', (req: AuthRequest, res: Response) => {
         assigned_date, due_date, attachment_url, attachment_name
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, req.institution_id, title, description, type, class_id, section_id || null,
-      subject_id, session_id, term_id || null, teacher.id, max_marks || 100,
+      id, req.institution_id, title, description || null, type, class_id, section_id || null,
+      subject_id, sessionId, term_id || null, ownerId, Number.isFinite(max_marks) ? max_marks : 100,
       assigned_date || new Date().toISOString().split('T')[0], due_date,
       attachment_url || null, attachment_name || null
     );
 
-    // Create notification for students in this class
     const students = db.prepare(`
-      SELECT id FROM students
-      WHERE institution_id = ? AND class_id = ? AND is_active = 1
+      SELECT id, user_id FROM students
+      WHERE institution_id = ? AND class_id = ?
+        AND (is_active = 1 OR is_active IS NULL)
+        AND (status IS NULL OR status = 'active')
       ${section_id ? 'AND section_id = ?' : ''}
-    `).all(section_id ? [req.institution_id, class_id, section_id] : [req.institution_id, class_id]);
-
-    const notifStmt = db.prepare(`
-      INSERT INTO notifications (
-        id, institution_id, user_id, title, message, type,
-        related_entity_type, related_entity_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    `).all(...(section_id ? [req.institution_id, class_id, section_id] : [req.institution_id, class_id]));
 
     for (const student of students as any[]) {
-      // Get student's user_id
-      const studentUser = db.prepare(`
-        SELECT user_id FROM students WHERE id = ?
-      `).get(student.id) as any;
-
-      if (studentUser?.user_id) {
-        notifStmt.run(
-          generateId(), req.institution_id, studentUser.user_id,
-          `New ${type}: ${title}`,
-          `Due date: ${due_date}`,
-          'assignment',
-          'assignment', id
-        );
+      if (student.user_id) {
+        notify(db, req.institution_id!, student.user_id, `New ${type}: ${title}`, `Due date: ${due_date}`, id);
       }
     }
 
@@ -141,10 +185,7 @@ assignmentsRouter.get('/', (req: AuthRequest, res: Response) => {
 
   // If student, filter by their class
   if (req.user?.user_type === 'student') {
-    const student = db.prepare(`
-      SELECT class_id, section_id FROM students
-      WHERE user_id = ? AND institution_id = ? AND is_active = 1
-    `).get(req.user.id, req.institution_id) as any;
+    const student = findStudent(db, req);
 
     if (student) {
       where += ' AND a.class_id = ?';
@@ -170,6 +211,7 @@ assignmentsRouter.get('/', (req: AuthRequest, res: Response) => {
       sub.name as subject_name,
       e.first_name || ' ' || e.last_name as teacher_name,
       (SELECT COUNT(*) FROM assignment_submissions WHERE assignment_id = a.id) as submission_count,
+      (SELECT COUNT(*) FROM assignment_submissions WHERE assignment_id = a.id) as total_submissions,
       (SELECT COUNT(*) FROM assignment_submissions WHERE assignment_id = a.id AND status = 'submitted') as pending_count
     FROM assignments a
     LEFT JOIN classes c ON a.class_id = c.id
@@ -209,8 +251,7 @@ assignmentsRouter.get('/:id', (req: AuthRequest, res: Response) => {
     return;
   }
 
-  // If teacher, include submissions
-  if (req.user?.user_type === 'teacher') {
+  if (req.user?.user_type !== 'student') {
     const submissions = db.prepare(`
       SELECT
         asub.*,
@@ -231,8 +272,8 @@ assignmentsRouter.get('/:id', (req: AuthRequest, res: Response) => {
 
 // Update assignment (Teacher only)
 assignmentsRouter.put('/:id', (req: AuthRequest, res: Response) => {
-  if (req.user?.user_type !== 'teacher') {
-    res.status(403).json({ error: 'Only teachers can update assignments' });
+  if (!canManage(req, 'create')) {
+    res.status(403).json({ error: 'You do not have permission to update assignments' });
     return;
   }
 
@@ -283,8 +324,8 @@ assignmentsRouter.put('/:id', (req: AuthRequest, res: Response) => {
 
 // Delete assignment (Teacher only)
 assignmentsRouter.delete('/:id', (req: AuthRequest, res: Response) => {
-  if (req.user?.user_type !== 'teacher') {
-    res.status(403).json({ error: 'Only teachers can delete assignments' });
+  if (!canManage(req, 'delete')) {
+    res.status(403).json({ error: 'You do not have permission to delete assignments' });
     return;
   }
 
@@ -294,17 +335,14 @@ assignmentsRouter.delete('/:id', (req: AuthRequest, res: Response) => {
   const teacher = db.prepare(`
     SELECT id FROM employees
     WHERE user_id = ? AND institution_id = ? AND is_teacher = 1
-  `).get(req.user.id, req.institution_id) as any;
+  `).get(req.user!.id, req.institution_id) as any;
 
-  if (!teacher) {
-    res.status(404).json({ error: 'Teacher record not found' });
-    return;
-  }
-
+  const ownOnly = req.user?.user_type === 'teacher';
   const result = db.prepare(`
     DELETE FROM assignments
-    WHERE id = ? AND institution_id = ? AND teacher_id = ?
-  `).run(id, req.institution_id, teacher.id);
+    WHERE id = ? AND institution_id = ?
+    ${ownOnly ? 'AND teacher_id = ?' : ''}
+  `).run(...(ownOnly ? [id, req.institution_id, teacher?.id] : [id, req.institution_id]));
 
   if (result.changes === 0) {
     res.status(404).json({ error: 'Assignment not found or access denied' });
@@ -328,11 +366,7 @@ assignmentsRouter.post('/:id/submit', (req: AuthRequest, res: Response) => {
   const { submission_text, attachment_url, attachment_name } = req.body;
   const db = getDatabase();
 
-  // Get student's record
-  const student = db.prepare(`
-    SELECT id, class_id, section_id FROM students
-    WHERE user_id = ? AND institution_id = ? AND is_active = 1
-  `).get(req.user.id, req.institution_id) as any;
+  const student = findStudent(db, req);
 
   if (!student) {
     res.status(404).json({ error: 'Student record not found' });
@@ -344,10 +378,10 @@ assignmentsRouter.post('/:id/submit', (req: AuthRequest, res: Response) => {
     SELECT id, teacher_id, due_date FROM assignments
     WHERE id = ? AND institution_id = ? AND class_id = ? AND is_active = 1
     ${student.section_id ? 'AND (section_id IS NULL OR section_id = ?)' : ''}
-  `).get(
-    student.section_id ? [id, req.institution_id, student.class_id, student.section_id] :
-    [id, req.institution_id, student.class_id]
-  ) as any;
+  `).get(...(student.section_id
+    ? [id, req.institution_id, student.class_id, student.section_id]
+    : [id, req.institution_id, student.class_id]
+  )) as any;
 
   if (!assignment) {
     res.status(404).json({ error: 'Assignment not found or not assigned to your class' });
@@ -435,8 +469,8 @@ assignmentsRouter.post('/:id/submit', (req: AuthRequest, res: Response) => {
 // ============================================
 
 assignmentsRouter.post('/:assignmentId/submissions/:submissionId/grade', (req: AuthRequest, res: Response) => {
-  if (req.user?.user_type !== 'teacher') {
-    res.status(403).json({ error: 'Only teachers can grade submissions' });
+  if (!canManage(req, 'grade')) {
+    res.status(403).json({ error: 'You do not have permission to grade submissions' });
     return;
   }
 
@@ -450,16 +484,14 @@ assignmentsRouter.post('/:assignmentId/submissions/:submissionId/grade', (req: A
     WHERE user_id = ? AND institution_id = ? AND is_teacher = 1
   `).get(req.user.id, req.institution_id) as any;
 
-  if (!teacher) {
-    res.status(404).json({ error: 'Teacher record not found' });
-    return;
-  }
-
-  // Verify teacher owns this assignment
+  const ownOnly = req.user?.user_type === 'teacher';
   const assignment = db.prepare(`
     SELECT id, max_marks FROM assignments
-    WHERE id = ? AND institution_id = ? AND teacher_id = ?
-  `).get(assignmentId, req.institution_id, teacher.id) as any;
+    WHERE id = ? AND institution_id = ?
+    ${ownOnly ? 'AND teacher_id = ?' : ''}
+  `).get(...(ownOnly
+    ? [assignmentId, req.institution_id, teacher?.id]
+    : [assignmentId, req.institution_id])) as any;
 
   if (!assignment) {
     res.status(404).json({ error: 'Assignment not found or access denied' });
@@ -495,7 +527,7 @@ assignmentsRouter.post('/:assignmentId/submissions/:submissionId/grade', (req: A
         graded_by = ?,
         updated_at = datetime('now')
       WHERE id = ?
-    `).run(marks_obtained, feedback, teacher.id, submissionId);
+    `).run(marks_obtained, feedback, teacher?.id || null, submissionId);
 
     // Notify student
     const studentUser = db.prepare(`
