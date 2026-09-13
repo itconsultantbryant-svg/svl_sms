@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { getDatabase } from '../database/init';
 import { AuthRequest, authorize } from '../middleware/auth';
+import { purgeUser } from '../utils/purgeRecords';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId, generateDefaultPassword, paginate, buildSearchQuery } from '../utils/helpers';
 import { ensureUserRole, getMergedAccessForUser, setUserRoles, setUserExtraPermissions } from '../utils/userAccess';
@@ -197,9 +198,33 @@ usersRouter.put('/:id/roles', authorize('platform_admin', 'institution_admin'), 
   res.json({ message: 'Roles updated', roles: access.roles, permissions: access.permissions });
 });
 
-usersRouter.delete('/:id', authorize('platform_admin'), (req: AuthRequest, res: Response) => {
+usersRouter.delete('/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   const { id } = req.params;
+  if (id === req.user?.id) {
+    res.status(400).json({ error: 'You cannot delete your own account' });
+    return;
+  }
+
   const db = getDatabase();
-  db.prepare(`UPDATE users SET is_active = 0, updated_at = datetime('now') WHERE id = ?`).run(id);
-  res.json({ message: 'User deactivated successfully' });
+  const user = db.prepare('SELECT id, institution_id, user_type, username FROM users WHERE id = ?').get(id) as any;
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  if (user.username === 'superadmin' || user.user_type === 'platform_admin') {
+    res.status(400).json({ error: 'This account cannot be deleted' });
+    return;
+  }
+  if (req.user?.user_type !== 'platform_admin' && user.institution_id !== req.institution_id) {
+    res.status(403).json({ error: 'You can only delete users in your school' });
+    return;
+  }
+
+  try {
+    purgeUser(db, id);
+    res.json({ message: 'User deleted successfully' });
+  } catch (error: any) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Failed to delete user', details: error.message });
+  }
 });

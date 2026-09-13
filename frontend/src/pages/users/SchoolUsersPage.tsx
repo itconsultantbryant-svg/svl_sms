@@ -141,7 +141,8 @@ export default function SchoolUsersPage() {
               <th className="py-2 pr-3">Name</th>
               <th className="py-2 pr-3">Username</th>
               <th className="py-2 pr-3">Type</th>
-              <th className="py-2">Permissions</th>
+              <th className="py-2 pr-3">Permissions</th>
+              <th className="py-2"></th>
             </tr>
           </thead>
           <tbody>
@@ -150,7 +151,7 @@ export default function SchoolUsersPage() {
                 <td className="py-2 pr-3">{u.first_name} {u.last_name}</td>
                 <td className="py-2 pr-3">{u.username}</td>
                 <td className="py-2 pr-3">{u.user_type}</td>
-                <td className="py-2">
+                <td className="py-2 pr-3">
                   <button
                     type="button"
                     className="text-primary-600 text-xs"
@@ -161,6 +162,26 @@ export default function SchoolUsersPage() {
                   >
                     {(u.roles || []).map((r: any) => r.name).join(', ') || 'Assign via form'}
                   </button>
+                </td>
+                <td className="py-2 text-right">
+                  {u.user_type !== 'platform_admin' && (
+                    <button
+                      type="button"
+                      className="text-red-600 text-xs"
+                      onClick={async () => {
+                        if (!window.confirm(`Delete ${u.username}? They will no longer be able to sign in.`)) return;
+                        try {
+                          await api.delete(`/users/${u.id}`);
+                          toast.success('User deleted');
+                          qc.invalidateQueries({ queryKey: ['school-users'] });
+                        } catch (err: any) {
+                          toast.error(err.response?.data?.error || 'Failed to delete user');
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

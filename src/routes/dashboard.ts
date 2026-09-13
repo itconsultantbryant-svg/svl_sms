@@ -270,14 +270,14 @@ dashboardRouter.get('/teacher', (req: AuthRequest, res: Response) => {
   const empId = employee?.id;
 
   res.json({
-    my_classes: safe(() => (db.prepare(`SELECT COUNT(DISTINCT class_id) as v FROM teacher_assignments WHERE teacher_id = ? AND institution_id = ?`).get(empId, iid) as any)?.v || 0),
+    my_classes: safe(() => (db.prepare(`SELECT COUNT(DISTINCT class_id) as v FROM teacher_assignments WHERE employee_id = ? AND institution_id = ?`).get(empId, iid) as any)?.v || 0),
     my_students: safe(() => (db.prepare(`
       SELECT COUNT(DISTINCT s.id) as v FROM students s
       JOIN teacher_assignments ta ON ta.class_id = s.class_id
-      WHERE ta.teacher_id = ? AND s.institution_id = ? AND s.status = 'active'
+      WHERE ta.employee_id = ? AND s.institution_id = ? AND s.status = 'active'
     `).get(empId, iid) as any)?.v || 0),
     pending_assignments: safe(() => (db.prepare(`
-      SELECT COUNT(*) as v FROM homework_assignments
+      SELECT COUNT(*) as v FROM assignments
       WHERE teacher_id = ? AND institution_id = ? AND due_date >= DATE('now')
     `).get(empId, iid) as any)?.v || 0),
     attendance_today: safe(() => (db.prepare(`
@@ -308,9 +308,12 @@ dashboardRouter.get('/student', (req: AuthRequest, res: Response) => {
 
   res.json({
     pending_assignments: safe(() => (db.prepare(`
-      SELECT COUNT(*) as v FROM homework_assignments ha
-      WHERE ha.class_id = ? AND ha.institution_id = ? AND ha.due_date >= DATE('now')
-        AND NOT EXISTS (SELECT 1 FROM homework_submissions hs WHERE hs.assignment_id = ha.id AND hs.student_id = ?)
+      SELECT COUNT(*) as v FROM assignments a
+      WHERE a.class_id = ? AND a.institution_id = ? AND a.due_date >= DATE('now') AND a.is_active = 1
+        AND NOT EXISTS (
+          SELECT 1 FROM assignment_submissions asub
+          WHERE asub.assignment_id = a.id AND asub.student_id = ? AND asub.status IN ('submitted','late','graded')
+        )
     `).get(student?.class_id, iid, student?.id) as any)?.v || 0),
     attendance_pct: safe(() => {
       const total = (db.prepare(`SELECT COUNT(*) as v FROM student_attendance WHERE student_id = ?`).get(student?.id) as any)?.v || 0;

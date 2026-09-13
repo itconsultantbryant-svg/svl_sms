@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth';
 import { platformAdminOnly } from '../middleware/tenant';
 import { generateId, paginate, buildSearchQuery } from '../utils/helpers';
 import bcrypt from 'bcryptjs';
+import { purgeInstitution, purgeUser } from '../utils/purgeRecords';
 
 export const platformAdminRouter = Router();
 
@@ -1062,14 +1063,41 @@ platformAdminRouter.delete('/users/:id', (req: AuthRequest, res: Response) => {
     return;
   }
 
-  if (user.username === 'superadmin') {
-    res.status(400).json({ error: 'The superadmin account cannot be deactivated' });
+  if (user.username === 'superadmin' || user.id === req.user?.id) {
+    res.status(400).json({ error: 'This account cannot be deleted' });
     return;
   }
 
-  db.prepare("UPDATE users SET is_active = 0, updated_at = datetime('now') WHERE id = ?").run(id);
+  try {
+    purgeUser(db, id);
+    res.json({ message: 'User deleted successfully' });
+  } catch (error: any) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Failed to delete user', details: error.message });
+  }
+});
 
-  res.json({ message: 'User deactivated successfully' });
+platformAdminRouter.delete('/institutions/:id', (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const db = getDatabase();
+  const institution = db.prepare('SELECT id, institution_code FROM institutions WHERE id = ?').get(id) as any;
+
+  if (!institution) {
+    res.status(404).json({ error: 'Institution not found' });
+    return;
+  }
+  if (institution.institution_code === 'OFFLINE') {
+    res.status(400).json({ error: 'The offline institution cannot be deleted' });
+    return;
+  }
+
+  try {
+    purgeInstitution(db, id);
+    res.json({ message: 'Institution deleted successfully' });
+  } catch (error: any) {
+    console.error('Delete institution error:', error);
+    res.status(500).json({ error: 'Failed to delete institution', details: error.message });
+  }
 });
 
 // Reset a user's password

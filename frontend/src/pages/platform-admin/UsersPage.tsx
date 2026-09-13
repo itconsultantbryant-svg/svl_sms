@@ -136,17 +136,17 @@ export default function UsersPage() {
       return;
     }
     const ok = window.confirm(
-      `Deactivate user "${user.first_name} ${user.last_name}" (${user.username})? They will no longer be able to log in.`
+      `Delete user "${user.first_name} ${user.last_name}" (${user.username})? This cannot be undone.`
     );
     if (!ok) return;
 
     try {
       await api.delete(`/platform-admin/users/${user.id}`);
-      toast.success('User deactivated');
+      toast.success('User deleted');
       if (viewUser?.id === user.id) setViewUser(null);
       fetchUsers();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to deactivate user');
+      toast.error(error.response?.data?.error || 'Failed to delete user');
     }
   };
 

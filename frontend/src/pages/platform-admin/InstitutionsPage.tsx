@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { schoolPortalUrl } from '../../utils/schoolHost';
 import {
@@ -9,7 +10,8 @@ import {
   CheckCircle as CheckCircleIcon,
   XCircle as XCircleIcon,
   Pencil as PencilIcon,
-  Eye as EyeIcon
+  Eye as EyeIcon,
+  Trash2
 } from 'lucide-react';
 
 interface Institution {
@@ -63,6 +65,18 @@ export default function InstitutionsPage() {
       console.error('Failed to fetch institutions:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (institution: Institution) => {
+    const ok = window.confirm(`Delete ${institution.institution_name}? This removes the school, its users, and its records. This cannot be undone.`);
+    if (!ok) return;
+    try {
+      await api.delete(`/platform-admin/institutions/${institution.id}`);
+      toast.success('Institution deleted');
+      fetchInstitutions();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to delete institution');
     }
   };
 
@@ -235,10 +249,18 @@ export default function InstitutionsPage() {
                     </Link>
                     <Link
                       to={`/platform-admin/institutions/${institution.id}/edit`}
-                      className="text-gray-600 hover:text-gray-900"
+                      className="text-gray-600 hover:text-gray-900 mr-3"
                     >
                       <PencilIcon className="h-5 w-5 inline" />
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(institution)}
+                      className="text-red-600 hover:text-red-800"
+                      title="Delete institution"
+                    >
+                      <Trash2 className="h-5 w-5 inline" />
+                    </button>
                   </td>
                 </tr>
               ))}
