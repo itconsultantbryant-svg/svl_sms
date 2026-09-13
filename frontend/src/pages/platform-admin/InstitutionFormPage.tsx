@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../utils/api';
+import { schoolPortalUrl } from '../../utils/schoolHost';
 import { ArrowLeft as ArrowLeftIcon } from 'lucide-react';
 
 interface InstitutionFormData {
@@ -88,9 +89,12 @@ export default function InstitutionFormPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
+    const next = name === 'institution_code'
+      ? value.toUpperCase().replace(/[^A-Z0-9-]/g, '')
+      : value;
     setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : next
     }));
   };
 
@@ -176,8 +180,14 @@ export default function InstitutionFormPage() {
                 onChange={handleChange}
                 required
                 disabled={isEdit}
+                pattern="[A-Za-z0-9-]+"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
               />
+              <p className="mt-1 text-xs text-gray-500">
+                {schoolPortalUrl(formData.institution_code)
+                  ? <>School login: <span className="font-medium">{schoolPortalUrl(formData.institution_code)}</span></>
+                  : 'Letters, numbers, and hyphens only. This becomes the school address.'}
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">
@@ -599,6 +609,12 @@ export default function InstitutionFormPage() {
                     <span className="text-gray-600">Email:</span>
                     <span className="font-mono font-semibold text-xs">{credentials.email}</span>
                   </div>
+                  {schoolPortalUrl(formData.institution_code) && (
+                    <div className="pt-1">
+                      <span className="text-gray-600">School address:</span>
+                      <div className="font-mono font-semibold text-xs break-all">{schoolPortalUrl(formData.institution_code)}</div>
+                    </div>
+                  )}
                 </div>
                 <p className="text-xs text-yellow-700 mt-3">
                   ⚠️ Save these credentials now! They won't be shown again.
@@ -608,7 +624,7 @@ export default function InstitutionFormPage() {
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(
-                      `Username: ${credentials.username}\nPassword: ${credentials.password}\nEmail: ${credentials.email}`
+                      `School address: ${schoolPortalUrl(formData.institution_code) || ''}\nUsername: ${credentials.username}\nPassword: ${credentials.password}\nEmail: ${credentials.email}`
                     );
                     alert('Credentials copied to clipboard!');
                   }}

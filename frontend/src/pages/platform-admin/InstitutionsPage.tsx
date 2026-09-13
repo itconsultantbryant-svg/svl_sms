@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../utils/api';
+import { schoolPortalUrl } from '../../utils/schoolHost';
 import {
   Plus as PlusIcon,
   Building2 as BuildingOfficeIcon,
@@ -183,6 +184,16 @@ export default function InstitutionsPage() {
                         <div className="text-sm text-gray-500">
                           {institution.institution_code}
                         </div>
+                        {schoolPortalUrl(institution.institution_code) && (
+                          <a
+                            href={schoolPortalUrl(institution.institution_code)!}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-primary-600 hover:underline"
+                          >
+                            {schoolPortalUrl(institution.institution_code)!.replace('https://', '')}
+                          </a>
+                        )}
                       </div>
                     </div>
                   </td>

@@ -166,6 +166,14 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
     admin_user // { username, email, first_name, last_name, password }
   } = req.body;
 
+  const normalizedCode = String(institution_code || '').trim().toUpperCase();
+  if (!/^[A-Z0-9-]+$/.test(normalizedCode) || ['WWW', 'SMS', 'APP', 'API', 'MAIL', 'ADMIN'].includes(normalizedCode)) {
+    res.status(400).json({
+      error: 'Institution code must use letters, numbers, and hyphens only, and cannot be a reserved address such as SMS'
+    });
+    return;
+  }
+
   if (!institution_code || !institution_name || !admin_user) {
     res.status(400).json({
       error: 'Required fields missing',
@@ -203,7 +211,7 @@ platformAdminRouter.post('/institutions', (req: AuthRequest, res: Response) => {
   }
 
   // Check if code already exists
-  const existing = db.prepare('SELECT id FROM institutions WHERE institution_code = ?').get(institution_code);
+  const existing = db.prepare('SELECT id FROM institutions WHERE UPPER(institution_code) = ?').get(normalizedCode);
   if (existing) {
     res.status(409).json({ error: 'Institution code already exists' });
     return;
