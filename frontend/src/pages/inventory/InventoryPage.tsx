@@ -167,7 +167,7 @@ function TransactionsTab() {
                 <td className="py-3 px-3 font-medium">{t.item_name}</td>
                 <td className="py-3 px-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${typeColors[t.type] || ''}`}>{t.type}</span></td>
                 <td className="py-3 px-3 text-center">{t.quantity}</td>
-                <td className="py-3 px-3 text-right">${t.total_price.toFixed(2)}</td>
+                <td className="py-3 px-3 text-right">${Number(t.total_price || 0).toFixed(2)}</td>
                 <td className="py-3 px-3 text-gray-500">{t.created_by_name || '-'}</td>
               </tr>
             ))}
@@ -194,6 +194,7 @@ function CategoriesTab() {
   const addMutation = useMutation({
     mutationFn: (d: any) => api.post('/inventory/categories', d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['inv-categories'] }); toast.success('Category added'); setName(''); },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to add category'),
   });
 
   return (

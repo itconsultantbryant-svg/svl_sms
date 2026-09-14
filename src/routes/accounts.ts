@@ -6,6 +6,23 @@ import { generateId, paginate } from '../utils/helpers';
 
 export const accountsRouter = Router();
 
+const FINANCE_ROLES = ['platform_admin', 'institution_admin', 'accountant', 'finance_officer', 'finance'] as const;
+
+function listCategories(db: ReturnType<typeof getDatabase>, table: 'income_categories' | 'expense_categories', institutionId: string | null | undefined) {
+  if (institutionId) {
+    try {
+      db.prepare(`UPDATE ${table} SET institution_id = ? WHERE institution_id IS NULL`).run(institutionId);
+    } catch { /* older table without the column is repaired on startup */ }
+  }
+  const filter = institutionId ? 'institution_id = ?' : '1=1';
+  const params = institutionId ? [institutionId] : [];
+  try {
+    return db.prepare(`SELECT * FROM ${table} WHERE ${filter} AND (is_active = 1 OR is_active IS NULL) ORDER BY name`).all(...params);
+  } catch {
+    return db.prepare(`SELECT * FROM ${table} WHERE ${filter} ORDER BY name`).all(...params);
+  }
+}
+
 // Apply tenant middleware to ALL routes
 accountsRouter.use(injectTenant);
 accountsRouter.use(requireTenant);
@@ -13,12 +30,10 @@ accountsRouter.use(requireTenant);
 // Income Categories
 accountsRouter.get('/income-categories', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const institutionFilter = req.institution_id ? `institution_id = '${req.institution_id}'` : '1=1';
-  const categories = db.prepare(`SELECT * FROM income_categories WHERE ${institutionFilter} AND is_active = 1 ORDER BY name`).all();
-  res.json(categories);
+  res.json(listCategories(db, 'income_categories', req.institution_id));
 });
 
-accountsRouter.post('/income-categories', authorize('platform_admin', 'institution_admin', 'accountant'), (req: AuthRequest, res: Response) => {
+accountsRouter.post('/income-categories', authorize(...FINANCE_ROLES), (req: AuthRequest, res: Response) => {
   const { name, description } = req.body;
   if (!name) { res.status(400).json({ error: 'Name is required' }); return; }
   const db = getDatabase();
@@ -30,12 +45,10 @@ accountsRouter.post('/income-categories', authorize('platform_admin', 'instituti
 // Expense Categories
 accountsRouter.get('/expense-categories', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const institutionFilter = req.institution_id ? `institution_id = '${req.institution_id}'` : '1=1';
-  const categories = db.prepare(`SELECT * FROM expense_categories WHERE ${institutionFilter} AND is_active = 1 ORDER BY name`).all();
-  res.json(categories);
+  res.json(listCategories(db, 'expense_categories', req.institution_id));
 });
 
-accountsRouter.post('/expense-categories', authorize('platform_admin', 'institution_admin', 'accountant'), (req: AuthRequest, res: Response) => {
+accountsRouter.post('/expense-categories', authorize(...FINANCE_ROLES), (req: AuthRequest, res: Response) => {
   const { name, description } = req.body;
   if (!name) { res.status(400).json({ error: 'Name is required' }); return; }
   const db = getDatabase();
@@ -73,7 +86,7 @@ accountsRouter.get('/income', (req: AuthRequest, res: Response) => {
   res.json({ data: income, total: total.count, page: parseInt(page), limit: lim });
 });
 
-accountsRouter.post('/income', authorize('platform_admin', 'institution_admin', 'accountant'), (req: AuthRequest, res: Response) => {
+accountsRouter.post('/income', authorize(...FINANCE_ROLES), (req: AuthRequest, res: Response) => {
   const { category_id, branch_id, amount, date, description, reference, payment_method } = req.body;
   if (!amount || !date) { res.status(400).json({ error: 'Amount and date are required' }); return; }
   const db = getDatabase();
@@ -111,7 +124,7 @@ accountsRouter.get('/expenses', (req: AuthRequest, res: Response) => {
   res.json({ data: expenses, total: total.count, page: parseInt(page), limit: lim });
 });
 
-accountsRouter.post('/expenses', authorize('platform_admin', 'institution_admin', 'accountant'), (req: AuthRequest, res: Response) => {
+accountsRouter.post('/expenses', authorize(...FINANCE_ROLES), (req: AuthRequest, res: Response) => {
   const { category_id, branch_id, amount, date, description, reference, vendor, payment_method } = req.body;
   if (!amount || !date) { res.status(400).json({ error: 'Amount and date are required' }); return; }
   const db = getDatabase();

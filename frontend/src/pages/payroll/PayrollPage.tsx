@@ -200,7 +200,7 @@ function SalariesTab() {
   const [form, setForm] = useState({ employee_id: '', structure_id: '', basic_salary: '', effective_from: '' });
 
   const { data: salaries } = useQuery<any[]>({ queryKey: ['employee-salaries'], queryFn: () => api.get('/payroll/employee-salaries').then(r => r.data) });
-  const { data: employees } = useQuery<any>({ queryKey: ['employees-payroll'], queryFn: () => api.get('/teachers', { params: { limit: 200 } }).then(r => r.data) });
+  const { data: employees } = useQuery<any>({ queryKey: ['employees-payroll'], queryFn: () => api.get('/payroll/employees').then(r => r.data) });
   const { data: structures } = useQuery<any[]>({ queryKey: ['salary-structures'], queryFn: () => api.get('/payroll/structures').then(r => r.data) });
 
   const assignMutation = useMutation({
@@ -217,7 +217,7 @@ function SalariesTab() {
         <div className="card">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Employee *</label><select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className="input-field"><option value="">Select</option>{employees?.data?.map((e: any) => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}</select></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1">Structure *</label><select value={form.structure_id} onChange={e => setForm(f => ({ ...f, structure_id: e.target.value }))} className="input-field"><option value="">Select</option>{structures?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Structure *</label><select value={form.structure_id} onChange={e => setForm(f => ({ ...f, structure_id: e.target.value }))} className="input-field"><option value="">Select</option>{(Array.isArray(structures) ? structures : []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Basic Salary *</label><input type="number" step="0.01" value={form.basic_salary} onChange={e => setForm(f => ({ ...f, basic_salary: e.target.value }))} className="input-field" /></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Effective From *</label><input type="date" value={form.effective_from} onChange={e => setForm(f => ({ ...f, effective_from: e.target.value }))} className="input-field" /></div>
             <button onClick={() => assignMutation.mutate({ ...form, basic_salary: parseFloat(form.basic_salary) })} disabled={!form.employee_id || !form.structure_id || !form.basic_salary || !form.effective_from} className="btn-primary">Assign</button>
@@ -265,11 +265,13 @@ function StructuresTab() {
   const createMutation = useMutation({
     mutationFn: (d: any) => api.post('/payroll/structures', d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['salary-structures'] }); toast.success('Structure created'); setShowForm(false); setForm({ name: '', description: '' }); },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to create structure'),
   });
 
   const addCompMutation = useMutation({
     mutationFn: (d: any) => api.post(`/payroll/structures/${selectedStructure}/components`, d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['salary-components'] }); toast.success('Component added'); setCompForm({ name: '', type: 'earning', calculation_type: 'fixed', amount: '' }); },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to add component'),
   });
 
   return (
@@ -334,10 +336,17 @@ function LeavesTab() {
   const [showForm, setShowForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [form, setForm] = useState({ employee_id: '', leave_type_id: '', start_date: '', end_date: '', days: '', reason: '' });
+  const [typeForm, setTypeForm] = useState({ name: '', days_allowed: '10' });
 
   const { data: leaveTypes } = useQuery<any[]>({ queryKey: ['leave-types'], queryFn: () => api.get('/payroll/leave-types').then(r => r.data) });
-  const { data: employees } = useQuery<any>({ queryKey: ['employees-leave'], queryFn: () => api.get('/teachers', { params: { limit: 200 } }).then(r => r.data) });
+  const { data: employees } = useQuery<any>({ queryKey: ['employees-leave'], queryFn: () => api.get('/payroll/employees').then(r => r.data) });
   const { data, isLoading } = useQuery<any>({ queryKey: ['leaves', page, statusFilter], queryFn: () => api.get('/payroll/leaves', { params: { page, limit: 20, status: statusFilter || undefined } }).then(r => r.data) });
+
+  const addTypeMutation = useMutation({
+    mutationFn: (d: any) => api.post('/payroll/leave-types', d),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leave-types'] }); toast.success('Leave type added'); setTypeForm({ name: '', days_allowed: '10' }); },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to add leave type'),
+  });
 
   const applyMutation = useMutation({
     mutationFn: (d: any) => api.post('/payroll/leaves', d),
@@ -360,11 +369,23 @@ function LeavesTab() {
         <button onClick={() => setShowForm(!showForm)} className="btn-primary"><Plus size={16} className="mr-2" /> Apply Leave</button>
       </div>
 
+      <div className="card flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[180px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">New leave type</label>
+          <input value={typeForm.name} onChange={e => setTypeForm(f => ({ ...f, name: e.target.value }))} className="input-field" placeholder="e.g. Study Leave" />
+        </div>
+        <div className="w-28">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Days allowed</label>
+          <input type="number" value={typeForm.days_allowed} onChange={e => setTypeForm(f => ({ ...f, days_allowed: e.target.value }))} className="input-field" />
+        </div>
+        <button onClick={() => addTypeMutation.mutate({ name: typeForm.name, days_allowed: parseInt(typeForm.days_allowed) || 0 })} disabled={!typeForm.name} className="btn-secondary">Add type</button>
+      </div>
+
       {showForm && (
         <div className="card">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Employee *</label><select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className="input-field"><option value="">Select</option>{employees?.data?.map((e: any) => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}</select></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1">Leave Type *</label><select value={form.leave_type_id} onChange={e => setForm(f => ({ ...f, leave_type_id: e.target.value }))} className="input-field"><option value="">Select</option>{leaveTypes?.map(t => <option key={t.id} value={t.id}>{t.name} ({t.days_allowed} days)</option>)}</select></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Leave Type *</label><select value={form.leave_type_id} onChange={e => setForm(f => ({ ...f, leave_type_id: e.target.value }))} className="input-field"><option value="">Select</option>{(Array.isArray(leaveTypes) ? leaveTypes : []).map(t => <option key={t.id} value={t.id}>{t.name} ({t.days_allowed} days)</option>)}</select></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Days *</label><input type="number" value={form.days} onChange={e => setForm(f => ({ ...f, days: e.target.value }))} className="input-field" /></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label><input type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} className="input-field" /></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">End Date *</label><input type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} className="input-field" /></div>
@@ -427,7 +448,7 @@ function LoansTab() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ employee_id: '', amount: '', monthly_deduction: '', start_date: '', reason: '' });
 
-  const { data: employees } = useQuery<any>({ queryKey: ['employees-loan'], queryFn: () => api.get('/teachers', { params: { limit: 200 } }).then(r => r.data) });
+  const { data: employees } = useQuery<any>({ queryKey: ['employees-loan'], queryFn: () => api.get('/payroll/employees').then(r => r.data) });
   const { data: loans } = useQuery<any[]>({ queryKey: ['loans'], queryFn: () => api.get('/payroll/loans').then(r => r.data) });
 
   const addMutation = useMutation({

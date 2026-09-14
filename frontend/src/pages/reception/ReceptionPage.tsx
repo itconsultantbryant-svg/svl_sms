@@ -119,6 +119,7 @@ function CallsTab() {
   const addMutation = useMutation({
     mutationFn: (d: any) => api.post('/reception/calls', d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['phone-calls'] }); toast.success('Call logged'); setShowForm(false); setForm({ call_type: 'incoming', caller_name: '', phone: '', purpose: '', date: '', duration: '', notes: '' }); },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to log call'),
   });
 
   return (
@@ -180,6 +181,7 @@ function PostalTab() {
   const addMutation = useMutation({
     mutationFn: (d: any) => api.post('/reception/postal', d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['postal'] }); toast.success('Record added'); setShowForm(false); setForm({ type: 'incoming', reference_number: '', from_to: '', date: '', description: '', received_by: '' }); },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to add record'),
   });
 
   return (

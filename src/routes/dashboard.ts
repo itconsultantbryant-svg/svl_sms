@@ -248,7 +248,7 @@ dashboardRouter.get('/staff', (req: AuthRequest, res: Response) => {
     total_students: safe(() => (db.prepare(`SELECT COUNT(*) as v FROM students WHERE institution_id = ? AND status = 'active'`).get(iid) as any).v),
     total_teachers: safe(() => (db.prepare(`SELECT COUNT(*) as v FROM employees WHERE institution_id = ? AND is_teacher = 1 AND is_active = 1`).get(iid) as any).v),
     open_enquiries: safe(() => (db.prepare(`SELECT COUNT(*) as v FROM admission_enquiries WHERE institution_id = ? AND status IN ('new','follow_up','pending')`).get(iid) as any).v),
-    visitors_today: safe(() => (db.prepare(`SELECT COUNT(*) as v FROM visitors WHERE institution_id = ? AND DATE(visit_date) = DATE('now')`).get(iid) as any).v),
+    visitors_today: safe(() => (db.prepare(`SELECT COUNT(*) as v FROM visitors WHERE institution_id = ? AND DATE(check_in) = DATE('now')`).get(iid) as any).v),
     library_issues: safe(() => (db.prepare(`SELECT COUNT(*) as v FROM book_issues WHERE institution_id = ? AND status = 'issued'`).get(iid) as any).v),
     announcements: safe(() => db.prepare(`
       SELECT id, title, created_at FROM announcements

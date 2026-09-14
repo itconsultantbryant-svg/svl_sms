@@ -19,6 +19,8 @@ export default function LessonPlansAdminPage() {
     mime_type: '',
   });
 
+  const asList = (value: any) => Array.isArray(value) ? value : Array.isArray(value?.data) ? value.data : [];
+
   const { data, refetch } = useQuery({
     queryKey: ['lesson-plans'],
     queryFn: () => api.get('/lesson-plans').then((r) => r.data),
@@ -125,14 +127,14 @@ export default function LessonPlansAdminPage() {
               <label className="block text-sm font-medium mb-1">Class</label>
               <select className="input-field" value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })}>
                 <option value="">Any</option>
-                {(classes || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {asList(classes).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Subject</label>
               <select className="input-field" value={form.subject_id} onChange={(e) => setForm({ ...form, subject_id: e.target.value })}>
                 <option value="">Any</option>
-                {(subjects || []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {asList(subjects).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div className="md:col-span-2">
@@ -143,7 +145,7 @@ export default function LessonPlansAdminPage() {
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-1">Send to teachers</label>
               <div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1">
-                {(teachers || []).map((t: any) => {
+                {asList(teachers).map((t: any) => {
                   const checked = form.teacher_ids.includes(t.id);
                   return (
                     <label key={t.id} className="flex items-center gap-2 text-sm">
@@ -183,7 +185,7 @@ export default function LessonPlansAdminPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((p: any) => (
+            {asList(data?.data || data).map((p: any) => (
               <tr key={p.id} className="border-b border-gray-50">
                 <td className="py-2 pr-4 font-medium">{p.title}</td>
                 <td className="py-2 pr-4">{p.class_name || '—'}</td>

@@ -6,28 +6,85 @@ import { generateId, paginate } from '../utils/helpers';
 
 export const payrollRouter = Router();
 
+const PAYROLL_ROLES = ['platform_admin', 'institution_admin', 'hr_manager', 'accountant', 'finance_officer', 'finance', 'principal'] as const;
+
+function schoolId(req: AuthRequest, res: Response): string | null {
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school before using payroll' });
+    return null;
+  }
+  return req.institution_id;
+}
+
+function dbError(res: Response, err: any, fallback: string) {
+  console.error(fallback, err);
+  res.status(500).json({ error: fallback, details: err?.message || 'Internal server error' });
+}
+
+function ensureLeaveTypes(db: ReturnType<typeof getDatabase>, institutionId: string) {
+  const count = db.prepare('SELECT COUNT(*) as c FROM leave_types WHERE institution_id = ?').get(institutionId) as { c: number };
+  if (count.c > 0) return;
+  const defaults: Array<[string, number]> = [
+    ['Annual Leave', 21],
+    ['Sick Leave', 10],
+    ['Maternity Leave', 90],
+    ['Casual Leave', 7],
+  ];
+  const insert = db.prepare('INSERT INTO leave_types (id, institution_id, name, days_allowed, is_paid) VALUES (?, ?, ?, ?, 1)');
+  for (const [name, days] of defaults) insert.run(generateId(), institutionId, name, days);
+}
+
 // Apply tenant middleware to ALL routes
 payrollRouter.use(injectTenant);
 payrollRouter.use(requireTenant);
 
-// Salary Structures
-payrollRouter.get('/structures', (req: AuthRequest, res: Response) => {
+payrollRouter.get('/employees', (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const db = getDatabase();
-  const structures = db.prepare(`
-    SELECT ss.*,
-      (SELECT COUNT(*) FROM employee_salaries WHERE structure_id = ss.id AND is_active = 1) as employee_count
-    FROM salary_structures ss WHERE ss.is_active = 1 ORDER BY ss.name
-  `).all();
-  res.json(structures);
+  const rows = db.prepare(`
+    SELECT e.id, e.employee_id, e.first_name, e.last_name, e.is_teacher, d.name as department_name
+    FROM employees e
+    LEFT JOIN departments d ON d.id = e.department_id
+    WHERE e.institution_id = ? AND e.is_active = 1
+    ORDER BY e.first_name, e.last_name
+  `).all(institutionId);
+  res.json({ data: rows });
 });
 
-payrollRouter.post('/structures', authorize('platform_admin', 'institution_admin', 'hr_manager'), (req: AuthRequest, res: Response) => {
+// Salary Structures
+payrollRouter.get('/structures', (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
+  const db = getDatabase();
+  try {
+    db.prepare('UPDATE salary_structures SET institution_id = ? WHERE institution_id IS NULL').run(institutionId);
+    const structures = db.prepare(`
+      SELECT ss.*,
+        (SELECT COUNT(*) FROM employee_salaries WHERE structure_id = ss.id AND is_active = 1) as employee_count
+      FROM salary_structures ss
+      WHERE ss.institution_id = ? AND (ss.is_active = 1 OR ss.is_active IS NULL)
+      ORDER BY ss.name
+    `).all(institutionId);
+    res.json(structures);
+  } catch (err: any) {
+    dbError(res, err, 'Failed to load salary structures');
+  }
+});
+
+payrollRouter.post('/structures', authorize(...PAYROLL_ROLES), (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const { name, description } = req.body;
   if (!name) { res.status(400).json({ error: 'Name is required' }); return; }
   const db = getDatabase();
   const id = generateId();
-  db.prepare('INSERT INTO salary_structures (id, name, description) VALUES (?, ?, ?)').run(id, name, description || null);
-  res.status(201).json({ id, message: 'Salary structure created' });
+  try {
+    db.prepare('INSERT INTO salary_structures (id, institution_id, name, description) VALUES (?, ?, ?, ?)').run(id, institutionId, name, description || null);
+    res.status(201).json({ id, message: 'Salary structure created' });
+  } catch (err: any) {
+    dbError(res, err, 'Failed to create salary structure');
+  }
 });
 
 // Salary Components
@@ -38,17 +95,25 @@ payrollRouter.get('/structures/:structureId/components', (req: AuthRequest, res:
   res.json(components);
 });
 
-payrollRouter.post('/structures/:structureId/components', authorize('platform_admin', 'institution_admin', 'hr_manager'), (req: AuthRequest, res: Response) => {
+payrollRouter.post('/structures/:structureId/components', authorize(...PAYROLL_ROLES), (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const { structureId } = req.params;
   const { name, type, calculation_type, amount, percentage_of, is_taxable, sort_order } = req.body;
   if (!name || !type) { res.status(400).json({ error: 'Name and type are required' }); return; }
+  const componentType = type === 'deduction' ? 'deduction' : 'earning';
+  const calc = calculation_type === 'percentage' ? 'percentage' : 'fixed';
   const db = getDatabase();
   const id = generateId();
-  db.prepare(`INSERT INTO salary_components (id, structure_id, name, type, calculation_type, amount, percentage_of, is_taxable, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, structureId, name, type, calculation_type || 'fixed', amount || 0, percentage_of || null, is_taxable !== undefined ? is_taxable : 1, sort_order || 0);
-  res.status(201).json({ id, message: 'Component added' });
+  try {
+    db.prepare(`INSERT INTO salary_components (id, institution_id, structure_id, name, type, calculation_type, amount, percentage_of, is_taxable, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, institutionId, structureId, name, componentType, calc, amount || 0, percentage_of || null, is_taxable !== undefined ? is_taxable : 1, sort_order || 0);
+    res.status(201).json({ id, message: 'Component added' });
+  } catch (err: any) {
+    dbError(res, err, 'Failed to add salary component');
+  }
 });
 
-payrollRouter.delete('/components/:id', authorize('platform_admin', 'institution_admin', 'hr_manager'), (req: AuthRequest, res: Response) => {
+payrollRouter.delete('/components/:id', authorize(...PAYROLL_ROLES), (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const db = getDatabase();
   db.prepare('DELETE FROM salary_components WHERE id = ?').run(id);
@@ -57,10 +122,12 @@ payrollRouter.delete('/components/:id', authorize('platform_admin', 'institution
 
 // Employee Salary Assignment
 payrollRouter.get('/employee-salaries', (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const db = getDatabase();
   const { employee_id } = req.query as any;
-  let where = 'WHERE es.is_active = 1';
-  const params: any[] = [];
+  let where = 'WHERE es.is_active = 1 AND es.institution_id = ?';
+  const params: any[] = [institutionId];
   if (employee_id) { where += ' AND es.employee_id = ?'; params.push(employee_id); }
 
   const salaries = db.prepare(`
@@ -76,25 +143,39 @@ payrollRouter.get('/employee-salaries', (req: AuthRequest, res: Response) => {
   res.json(salaries);
 });
 
-payrollRouter.post('/employee-salaries', authorize('platform_admin', 'institution_admin', 'hr_manager'), (req: AuthRequest, res: Response) => {
+payrollRouter.post('/employee-salaries', authorize(...PAYROLL_ROLES), (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const { employee_id, structure_id, basic_salary, effective_from } = req.body;
   if (!employee_id || !structure_id || !basic_salary || !effective_from) {
     res.status(400).json({ error: 'Employee, structure, basic salary and effective date are required' });
     return;
   }
   const db = getDatabase();
-  db.prepare('UPDATE employee_salaries SET is_active = 0 WHERE employee_id = ? AND is_active = 1').run(employee_id);
-  const id = generateId();
-  db.prepare(`INSERT INTO employee_salaries (id, employee_id, structure_id, basic_salary, effective_from) VALUES (?, ?, ?, ?, ?)`).run(id, employee_id, structure_id, basic_salary, effective_from);
-  res.status(201).json({ id, message: 'Salary assigned' });
+  try {
+    const existing = db.prepare('SELECT id FROM employee_salaries WHERE employee_id = ? AND is_active = 1').get(employee_id) as { id: string } | undefined;
+    if (existing) {
+      db.prepare(`UPDATE employee_salaries SET institution_id = ?, structure_id = ?, basic_salary = ?, effective_from = ? WHERE id = ?`)
+        .run(institutionId, structure_id, basic_salary, effective_from, existing.id);
+      res.json({ id: existing.id, message: 'Salary assigned' });
+      return;
+    }
+    const id = generateId();
+    db.prepare(`INSERT INTO employee_salaries (id, institution_id, employee_id, structure_id, basic_salary, effective_from) VALUES (?, ?, ?, ?, ?, ?)`).run(id, institutionId, employee_id, structure_id, basic_salary, effective_from);
+    res.status(201).json({ id, message: 'Salary assigned' });
+  } catch (err: any) {
+    dbError(res, err, 'Failed to assign salary');
+  }
 });
 
 // Payroll Runs
 payrollRouter.get('/runs', (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const db = getDatabase();
   const { year } = req.query as any;
-  let where = 'WHERE 1=1';
-  const params: any[] = [];
+  let where = 'WHERE pr.institution_id = ?';
+  const params: any[] = [institutionId];
   if (year) { where += ' AND pr.year = ?'; params.push(parseInt(year)); }
 
   const runs = db.prepare(`
@@ -106,21 +187,27 @@ payrollRouter.get('/runs', (req: AuthRequest, res: Response) => {
   res.json(runs);
 });
 
-payrollRouter.post('/runs', authorize('platform_admin', 'institution_admin', 'hr_manager'), (req: AuthRequest, res: Response) => {
+payrollRouter.post('/runs', authorize(...PAYROLL_ROLES), (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const { month, year, branch_id, notes } = req.body;
   if (!month || !year) { res.status(400).json({ error: 'Month and year are required' }); return; }
   const db = getDatabase();
 
-  const existing = db.prepare('SELECT id FROM payroll_runs WHERE month = ? AND year = ? AND status != ?').get(month, year, 'cancelled') as any;
+  const existing = db.prepare('SELECT id FROM payroll_runs WHERE institution_id = ? AND month = ? AND year = ? AND status != ?').get(institutionId, month, year, 'cancelled') as any;
   if (existing) { res.status(400).json({ error: 'Payroll already exists for this month' }); return; }
 
   const id = generateId();
-  db.prepare(`INSERT INTO payroll_runs (id, month, year, branch_id, notes) VALUES (?, ?, ?, ?, ?)`).run(id, month, year, branch_id || null, notes || null);
-  res.status(201).json({ id, message: 'Payroll run created' });
+  try {
+    db.prepare(`INSERT INTO payroll_runs (id, institution_id, month, year, branch_id, notes) VALUES (?, ?, ?, ?, ?, ?)`).run(id, institutionId, month, year, branch_id || null, notes || null);
+    res.status(201).json({ id, message: 'Payroll run created' });
+  } catch (err: any) {
+    dbError(res, err, 'Failed to create payroll run');
+  }
 });
 
 // Process Payroll
-payrollRouter.post('/runs/:id/process', authorize('platform_admin', 'institution_admin', 'hr_manager'), (req: AuthRequest, res: Response) => {
+payrollRouter.post('/runs/:id/process', authorize(...PAYROLL_ROLES), (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = getDatabase();
@@ -132,8 +219,8 @@ payrollRouter.post('/runs/:id/process', authorize('platform_admin', 'institution
       SELECT es.*, e.first_name, e.last_name, e.employee_id as emp_number
       FROM employee_salaries es
       JOIN employees e ON es.employee_id = e.id
-      WHERE es.is_active = 1 AND e.is_active = 1
-    `).all() as any[];
+      WHERE es.is_active = 1 AND e.is_active = 1 AND es.institution_id = ?
+    `).all(req.institution_id) as any[];
 
     if (employeeSalaries.length === 0) {
       res.status(400).json({ error: 'No active employee salaries found' });
@@ -145,8 +232,8 @@ payrollRouter.post('/runs/:id/process', authorize('platform_admin', 'institution
       let runTotalDeductions = 0;
       let runTotalNet = 0;
 
-      const insertPayslip = db.prepare(`INSERT INTO payslips (id, payroll_id, employee_id, basic_salary, total_earnings, total_deductions, net_salary) VALUES (?, ?, ?, ?, ?, ?, ?)`);
-      const insertItem = db.prepare(`INSERT INTO payslip_items (id, payslip_id, component_name, type, amount, sort_order) VALUES (?, ?, ?, ?, ?, ?)`);
+      const insertPayslip = db.prepare(`INSERT INTO payslips (id, institution_id, payroll_id, employee_id, basic_salary, total_earnings, total_deductions, net_salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+      const insertItem = db.prepare(`INSERT INTO payslip_items (id, institution_id, payslip_id, component_name, type, amount, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)`);
 
       for (const es of employeeSalaries) {
         const components = db.prepare('SELECT * FROM salary_components WHERE structure_id = ? ORDER BY type, sort_order').all(es.structure_id) as any[];
@@ -180,10 +267,10 @@ payrollRouter.post('/runs/:id/process', authorize('platform_admin', 'institution
 
         const netSalary = totalEarnings - totalDeductions;
         const payslipId = generateId();
-        insertPayslip.run(payslipId, id, es.employee_id, es.basic_salary, totalEarnings, totalDeductions, netSalary);
+        insertPayslip.run(payslipId, req.institution_id, id, es.employee_id, es.basic_salary, totalEarnings, totalDeductions, netSalary);
 
         for (const item of items) {
-          insertItem.run(generateId(), payslipId, item.name, item.type, item.amount, item.order);
+          insertItem.run(generateId(), req.institution_id, payslipId, item.name, item.type, item.amount, item.order);
         }
 
         runTotalEarnings += totalEarnings;
@@ -242,28 +329,43 @@ payrollRouter.get('/payslips/:id', (req: AuthRequest, res: Response) => {
 
 // Leave Types
 payrollRouter.get('/leave-types', (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const db = getDatabase();
-  const types = db.prepare('SELECT * FROM leave_types WHERE is_active = 1 ORDER BY name').all();
-  res.json(types);
+  try {
+    ensureLeaveTypes(db, institutionId);
+    const types = db.prepare('SELECT * FROM leave_types WHERE institution_id = ? AND (is_active = 1 OR is_active IS NULL) ORDER BY name').all(institutionId);
+    res.json(types);
+  } catch (err: any) {
+    dbError(res, err, 'Failed to load leave types');
+  }
 });
 
-payrollRouter.post('/leave-types', authorize('platform_admin', 'institution_admin', 'hr_manager'), (req: AuthRequest, res: Response) => {
+payrollRouter.post('/leave-types', authorize(...PAYROLL_ROLES), (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const { name, days_allowed, is_paid } = req.body;
   if (!name) { res.status(400).json({ error: 'Name is required' }); return; }
   const db = getDatabase();
   const id = generateId();
-  db.prepare('INSERT INTO leave_types (id, name, days_allowed, is_paid) VALUES (?, ?, ?, ?)').run(id, name, days_allowed || 0, is_paid !== undefined ? is_paid : 1);
-  res.status(201).json({ id, message: 'Leave type created' });
+  try {
+    db.prepare('INSERT INTO leave_types (id, institution_id, name, days_allowed, is_paid) VALUES (?, ?, ?, ?, ?)').run(id, institutionId, name, days_allowed || 0, is_paid !== undefined ? (is_paid ? 1 : 0) : 1);
+    res.status(201).json({ id, message: 'Leave type created' });
+  } catch (err: any) {
+    dbError(res, err, 'Failed to create leave type');
+  }
 });
 
 // Leave Applications
 payrollRouter.get('/leaves', (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const db = getDatabase();
   const { page = '1', limit = '20', status, employee_id } = req.query as any;
   const { limit: lim, offset } = paginate(parseInt(page), parseInt(limit));
 
-  let where = 'WHERE 1=1';
-  const params: any[] = [];
+  let where = 'WHERE la.institution_id = ?';
+  const params: any[] = [institutionId];
   if (status) { where += ' AND la.status = ?'; params.push(status); }
   if (employee_id) { where += ' AND la.employee_id = ?'; params.push(employee_id); }
 
@@ -282,6 +384,8 @@ payrollRouter.get('/leaves', (req: AuthRequest, res: Response) => {
 });
 
 payrollRouter.post('/leaves', (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const { employee_id, leave_type_id, start_date, end_date, days, reason } = req.body;
   if (!employee_id || !leave_type_id || !start_date || !end_date || !days) {
     res.status(400).json({ error: 'Employee, leave type, dates and days are required' });
@@ -289,11 +393,15 @@ payrollRouter.post('/leaves', (req: AuthRequest, res: Response) => {
   }
   const db = getDatabase();
   const id = generateId();
-  db.prepare(`INSERT INTO leave_applications (id, employee_id, leave_type_id, start_date, end_date, days, reason) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, employee_id, leave_type_id, start_date, end_date, days, reason || null);
-  res.status(201).json({ id, message: 'Leave application submitted' });
+  try {
+    db.prepare(`INSERT INTO leave_applications (id, institution_id, employee_id, leave_type_id, start_date, end_date, days, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, institutionId, employee_id, leave_type_id, start_date, end_date, days, reason || null);
+    res.status(201).json({ id, message: 'Leave application submitted' });
+  } catch (err: any) {
+    dbError(res, err, 'Failed to submit leave');
+  }
 });
 
-payrollRouter.put('/leaves/:id/approve', authorize('platform_admin', 'institution_admin', 'hr_manager', 'principal'), (req: AuthRequest, res: Response) => {
+payrollRouter.put('/leaves/:id/approve', authorize(...PAYROLL_ROLES), (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const { status, notes } = req.body;
   if (!status || !['approved', 'rejected'].includes(status)) {
@@ -307,10 +415,12 @@ payrollRouter.put('/leaves/:id/approve', authorize('platform_admin', 'institutio
 
 // Loans
 payrollRouter.get('/loans', (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const db = getDatabase();
   const { employee_id, status } = req.query as any;
-  let where = 'WHERE 1=1';
-  const params: any[] = [];
+  let where = 'WHERE el.institution_id = ?';
+  const params: any[] = [institutionId];
   if (employee_id) { where += ' AND el.employee_id = ?'; params.push(employee_id); }
   if (status) { where += ' AND el.status = ?'; params.push(status); }
 
@@ -323,7 +433,9 @@ payrollRouter.get('/loans', (req: AuthRequest, res: Response) => {
   res.json(loans);
 });
 
-payrollRouter.post('/loans', authorize('platform_admin', 'institution_admin', 'hr_manager'), (req: AuthRequest, res: Response) => {
+payrollRouter.post('/loans', authorize(...PAYROLL_ROLES), (req: AuthRequest, res: Response) => {
+  const institutionId = schoolId(req, res);
+  if (!institutionId) return;
   const { employee_id, amount, monthly_deduction, start_date, reason } = req.body;
   if (!employee_id || !amount || !monthly_deduction || !start_date) {
     res.status(400).json({ error: 'Employee, amount, monthly deduction and start date are required' });
@@ -331,6 +443,10 @@ payrollRouter.post('/loans', authorize('platform_admin', 'institution_admin', 'h
   }
   const db = getDatabase();
   const id = generateId();
-  db.prepare(`INSERT INTO employee_loans (id, employee_id, amount, monthly_deduction, balance, start_date, reason, approved_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, employee_id, amount, monthly_deduction, amount, start_date, reason || null, req.user?.id || null);
-  res.status(201).json({ id, message: 'Loan created' });
+  try {
+    db.prepare(`INSERT INTO employee_loans (id, institution_id, employee_id, amount, monthly_deduction, balance, start_date, reason, approved_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, institutionId, employee_id, amount, monthly_deduction, amount, start_date, reason || null, req.user?.id || null);
+    res.status(201).json({ id, message: 'Loan created' });
+  } catch (err: any) {
+    dbError(res, err, 'Failed to create loan');
+  }
 });

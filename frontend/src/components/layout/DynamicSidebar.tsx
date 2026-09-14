@@ -59,6 +59,7 @@ function buildNavigation(homePath: string): MenuItem[] {
         { name: 'Invoices', href: '/fees/invoices' },
         { name: 'Payments', href: '/fees/payments' },
         { name: 'Accounts', href: '/accounts' },
+        { name: 'Payroll', href: '/payroll' },
         { name: 'Reports', href: '/reports' },
       ],
     },

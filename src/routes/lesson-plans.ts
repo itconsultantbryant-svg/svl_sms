@@ -130,7 +130,13 @@ lessonPlansRouter.post('/', authorize('platform_admin', 'institution_admin'), (r
       }
     }
   });
-  tx();
+  try {
+    tx();
+  } catch (err: any) {
+    console.error('Lesson plan create error:', err);
+    res.status(500).json({ error: 'Failed to create lesson plan', details: err.message });
+    return;
+  }
 
   res.status(201).json({ id, message: 'Lesson plan created', status: hasRecipients ? 'sent' : 'draft' });
 });

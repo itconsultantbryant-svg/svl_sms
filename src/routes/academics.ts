@@ -77,7 +77,7 @@ academicsRouter.get('/terms', (req: AuthRequest, res: Response) => {
   }
 });
 
-academicsRouter.post('/terms', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+academicsRouter.post('/terms', authorize('platform_admin', 'institution_admin', 'teacher', 'staff'), (req: AuthRequest, res: Response) => {
   const { session_id, name, start_date, end_date, is_current } = req.body;
   if (!session_id || !name || !start_date || !end_date) {
     res.status(400).json({ error: 'Session, name, start date, and end date are required' });

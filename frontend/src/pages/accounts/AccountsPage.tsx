@@ -158,7 +158,7 @@ function IncomeTab({ dateRange, showForm, setShowForm }: { dateRange: any; showF
               <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
               <select value={form.category_id} onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))} className="input-field">
                 <option value="">Select</option>
-                {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {(Array.isArray(categories) ? categories : []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
@@ -268,7 +268,7 @@ function ExpensesTab({ dateRange, showForm, setShowForm }: { dateRange: any; sho
               <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
               <select value={form.category_id} onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))} className="input-field">
                 <option value="">Select</option>
-                {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {(Array.isArray(categories) ? categories : []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
@@ -431,7 +431,8 @@ function CategoriesTab() {
     },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed'),
   });
-  const rows = kind === 'income' ? income || [] : expense || [];
+  const rows = (kind === 'income' ? income : expense);
+  const list = Array.isArray(rows) ? rows : [];
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
@@ -450,13 +451,13 @@ function CategoriesTab() {
         <button className="btn-primary" type="submit">Create category</button>
       </form>
       <div className="card">
-        {rows.map((c: any) => (
+        {list.map((c: any) => (
           <div key={c.id} className="py-2 border-b text-sm flex justify-between">
             <span className="font-medium">{c.name}</span>
             <span className="text-gray-500">{c.description || ''}</span>
           </div>
         ))}
-        {!rows.length && <p className="text-sm text-gray-400">No categories yet</p>}
+        {!list.length && <p className="text-sm text-gray-400">No categories yet</p>}
       </div>
     </div>
   );

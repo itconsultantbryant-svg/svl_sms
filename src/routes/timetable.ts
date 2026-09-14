@@ -13,33 +13,43 @@ timetableRouter.use(requireTenant);
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 // Periods
+const SCHEDULE_ROLES = ['platform_admin', 'institution_admin', 'teacher', 'staff'] as const;
+
 timetableRouter.get('/periods', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
   const { branch_id } = req.query as any;
-  let where = 'WHERE 1=1';
-  const params: any[] = [];
+  let where = req.institution_id ? 'WHERE institution_id = ?' : 'WHERE 1=1';
+  const params: any[] = req.institution_id ? [req.institution_id] : [];
   if (branch_id) { where += ' AND branch_id = ?'; params.push(branch_id); }
 
   const periods = db.prepare(`SELECT * FROM timetable_periods ${where} ORDER BY sort_order, start_time`).all(...params);
   res.json(periods);
 });
 
-timetableRouter.post('/periods', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+timetableRouter.post('/periods', authorize(...SCHEDULE_ROLES), (req: AuthRequest, res: Response) => {
   const { name, start_time, end_time, is_break, branch_id, sort_order } = req.body;
 
   if (!name || !start_time || !end_time) {
     res.status(400).json({ error: 'Name, start time, and end time are required' });
     return;
   }
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school before creating a period' });
+    return;
+  }
 
   const db = getDatabase();
   const id = generateId();
-  db.prepare(`
-    INSERT INTO timetable_periods (id, branch_id, name, start_time, end_time, is_break, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, branch_id || null, name, start_time, end_time, is_break ? 1 : 0, sort_order || 0);
-
-  res.status(201).json({ id, message: 'Period created successfully' });
+  try {
+    db.prepare(`
+      INSERT INTO timetable_periods (id, institution_id, branch_id, name, start_time, end_time, is_break, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, req.institution_id, branch_id || null, name, start_time, end_time, is_break ? 1 : 0, sort_order || 0);
+    res.status(201).json({ id, message: 'Period created successfully' });
+  } catch (err: any) {
+    console.error('Period create error:', err);
+    res.status(500).json({ error: 'Failed to create period', details: err.message });
+  }
 });
 
 timetableRouter.put('/periods/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
@@ -118,7 +128,7 @@ timetableRouter.get('/teacher/:teacherId', (req: AuthRequest, res: Response) => 
   res.json(entries);
 });
 
-timetableRouter.post('/entries', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+timetableRouter.post('/entries', authorize(...SCHEDULE_ROLES), (req: AuthRequest, res: Response) => {
   const { class_id, section_id, subject_id, teacher_id, period_id, session_id, day_of_week, room } = req.body;
 
   if (!class_id || !period_id || day_of_week === undefined || !session_id) {
@@ -145,13 +155,26 @@ timetableRouter.post('/entries', authorize('platform_admin', 'institution_admin'
     return;
   }
 
-  const id = generateId();
-  db.prepare(`
-    INSERT OR REPLACE INTO timetable_entries (id, class_id, section_id, subject_id, teacher_id, period_id, session_id, day_of_week, room)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, class_id, section_id || null, subject_id || null, teacher_id || null, period_id, session_id, day_of_week, room || null);
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school before adding a timetable entry' });
+    return;
+  }
 
-  res.status(201).json({ id, message: 'Timetable entry created successfully' });
+  const id = generateId();
+  try {
+    db.prepare(`
+      INSERT INTO timetable_entries (id, institution_id, class_id, section_id, subject_id, teacher_id, period_id, session_id, day_of_week, room)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, req.institution_id, class_id, section_id || null, subject_id || null, teacher_id || null, period_id, session_id, day_of_week, room || null);
+    res.status(201).json({ id, message: 'Timetable entry created successfully' });
+  } catch (err: any) {
+    if (String(err.message || '').includes('UNIQUE')) {
+      res.status(409).json({ error: 'That slot is already filled' });
+      return;
+    }
+    console.error('Timetable entry error:', err);
+    res.status(500).json({ error: 'Failed to add timetable entry', details: err.message });
+  }
 });
 
 timetableRouter.delete('/entries/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {

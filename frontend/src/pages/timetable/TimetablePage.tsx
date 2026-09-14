@@ -12,6 +12,9 @@ export default function TimetablePage() {
   const [classId, setClassId] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
+  const [periodForm, setPeriodForm] = useState({ name: '', start_time: '', end_time: '', is_break: false });
+  const [termForm, setTermForm] = useState({ session_id: '', name: '', start_date: '', end_date: '' });
   const [entryForm, setEntryForm] = useState({ subject_id: '', teacher_id: '', period_id: '', day_of_week: '0', room: '' });
 
   const { data: classes } = useQuery<Class[]>({
@@ -72,6 +75,26 @@ export default function TimetablePage() {
     },
   });
 
+  const addPeriod = useMutation({
+    mutationFn: (data: any) => api.post('/timetable/periods', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['periods'] });
+      toast.success('Period created');
+      setPeriodForm({ name: '', start_time: '', end_time: '', is_break: false });
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to create period'),
+  });
+
+  const addTerm = useMutation({
+    mutationFn: (data: any) => api.post('/academics/terms', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['terms'] });
+      toast.success('Term created');
+      setTermForm({ session_id: '', name: '', start_date: '', end_date: '' });
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to create term'),
+  });
+
   const handleAddEntry = (e: React.FormEvent) => {
     e.preventDefault();
     if (!entryForm.period_id || !currentSession) {
@@ -94,10 +117,68 @@ export default function TimetablePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Timetable</h1>
-        <p className="text-sm text-gray-500 mt-1">Manage class timetables</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Timetable</h1>
+          <p className="text-sm text-gray-500 mt-1">Create periods and terms, then fill the class timetable</p>
+        </div>
+        <button type="button" onClick={() => setShowSetup(!showSetup)} className="btn-secondary">
+          <Plus size={16} className="mr-2" /> {showSetup ? 'Hide setup' : 'Periods & Terms'}
+        </button>
       </div>
+
+      {showSetup && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <form className="card space-y-3" onSubmit={(e) => { e.preventDefault(); addPeriod.mutate({ ...periodForm, sort_order: (periods?.length || 0) + 1 }); }}>
+            <h2 className="font-semibold">New period</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-sm font-medium mb-1">Name *</label>
+                <input className="input-field" value={periodForm.name} onChange={e => setPeriodForm(f => ({ ...f, name: e.target.value }))} placeholder="Period 1 or Break" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Start *</label>
+                <input type="time" className="input-field" value={periodForm.start_time} onChange={e => setPeriodForm(f => ({ ...f, start_time: e.target.value }))} required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">End *</label>
+                <input type="time" className="input-field" value={periodForm.end_time} onChange={e => setPeriodForm(f => ({ ...f, end_time: e.target.value }))} required />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={periodForm.is_break} onChange={e => setPeriodForm(f => ({ ...f, is_break: e.target.checked }))} />
+              This is a break
+            </label>
+            <button className="btn-primary" type="submit" disabled={addPeriod.isPending}>Create period</button>
+            <p className="text-xs text-gray-500">{periods?.length || 0} period(s) already set up</p>
+          </form>
+          <form className="card space-y-3" onSubmit={(e) => { e.preventDefault(); addTerm.mutate(termForm); }}>
+            <h2 className="font-semibold">New term</h2>
+            <div>
+              <label className="block text-sm font-medium mb-1">Session *</label>
+              <select className="input-field" value={termForm.session_id} onChange={e => setTermForm(f => ({ ...f, session_id: e.target.value }))} required>
+                <option value="">Select session</option>
+                {(Array.isArray(sessions) ? sessions : []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Term name *</label>
+              <input className="input-field" value={termForm.name} onChange={e => setTermForm(f => ({ ...f, name: e.target.value }))} placeholder="Term 1" required />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">Start *</label>
+                <input type="date" className="input-field" value={termForm.start_date} onChange={e => setTermForm(f => ({ ...f, start_date: e.target.value }))} required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">End *</label>
+                <input type="date" className="input-field" value={termForm.end_date} onChange={e => setTermForm(f => ({ ...f, end_date: e.target.value }))} required />
+              </div>
+            </div>
+            <button className="btn-primary" type="submit" disabled={addTerm.isPending}>Create term</button>
+          </form>
+        </div>
+      )}
 
       <div className="card">
         <div className="flex flex-wrap gap-3 items-end">

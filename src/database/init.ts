@@ -19,9 +19,28 @@ export function getDatabase(): Database.Database {
 
 function ensureColumn(database: Database.Database, table: string, column: string, definition: string): void {
   const cols = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  if (!cols.some((c) => c.name === column)) {
-    database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  if (!cols.length || cols.some((c) => c.name === column)) return;
+  database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+const TENANT_TABLES = [
+  'salary_structures', 'salary_components', 'employee_salaries', 'payroll_runs',
+  'payslips', 'payslip_items', 'leave_types', 'leave_applications', 'employee_loans',
+  'inventory_categories', 'inventory_items', 'stock_transactions',
+  'visitors', 'phone_calls', 'postal_records',
+  'timetable_periods', 'timetable_entries',
+  'expense_categories', 'income_categories', 'expenses', 'income',
+];
+
+function ensureTenantColumns(database: Database.Database): void {
+  for (const table of TENANT_TABLES) {
+    ensureColumn(database, table, 'institution_id', 'TEXT');
   }
+  ensureColumn(database, 'visitors', 'created_by', 'TEXT');
+  ensureColumn(database, 'phone_calls', 'created_by', 'TEXT');
+  ensureColumn(database, 'postal_records', 'created_by', 'TEXT');
+  ensureColumn(database, 'expense_categories', 'is_active', 'INTEGER DEFAULT 1');
+  ensureColumn(database, 'income_categories', 'is_active', 'INTEGER DEFAULT 1');
 }
 
 export function migrateInstitutionBranding(database?: Database.Database): void {
@@ -44,6 +63,7 @@ export function initializeDatabase(): void {
   database.exec(schemaV2Consolidated);
   database.exec(homeworkAssignmentsSchema);
   database.exec(gradebookLessonPermsSchema);
+  ensureTenantColumns(database);
   migrateInstitutionBranding(database);
   backfillUserRoles(database);
 

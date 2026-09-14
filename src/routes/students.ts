@@ -92,6 +92,11 @@ studentsRouter.get('/:id', (req: AuthRequest, res: Response) => {
   res.json({ ...student, parents, documents });
 });
 
+function emptyToNull(value: any) {
+  if (value === undefined || value === null || value === '') return null;
+  return value;
+}
+
 studentsRouter.post('/', (req: AuthRequest, res: Response) => {
   const {
     first_name, middle_name, last_name, date_of_birth, gender, nationality,
@@ -102,6 +107,10 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
 
   if (!first_name || !last_name) {
     res.status(400).json({ error: 'First name and last name are required' });
+    return;
+  }
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school before admitting a student' });
     return;
   }
 
@@ -127,34 +136,34 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
     insertStudent.run(
       id,
       req.institution_id, // TENANT ISOLATION
-      branch_id || req.user?.branch_id || null,
+      emptyToNull(branch_id) || emptyToNull(req.user?.branch_id),
       admission_number,
       first_name,
-      middle_name || null,
+      emptyToNull(middle_name),
       last_name,
-      date_of_birth || null,
-      gender || null,
+      emptyToNull(date_of_birth),
+      ['male', 'female', 'other'].includes(String(gender || '').toLowerCase()) ? String(gender).toLowerCase() : null,
       nationality || 'Liberian',
-      county || null,
-      address || null,
-      phone || null,
-      email || null,
-      photo || null,
-      blood_group || null,
-      medical_info || null,
-      previous_school || null,
-      previous_class || null,
+      emptyToNull(county),
+      emptyToNull(address),
+      emptyToNull(phone),
+      emptyToNull(email),
+      emptyToNull(photo),
+      emptyToNull(blood_group),
+      emptyToNull(medical_info),
+      emptyToNull(previous_school),
+      emptyToNull(previous_class),
       admission_date || new Date().toISOString().split('T')[0],
-      class_id || null,
-      section_id || null,
-      session_id || null
+      emptyToNull(class_id),
+      emptyToNull(section_id),
+      emptyToNull(session_id)
     );
 
     // Login user: Student ID (admission_number) + default password
     const studentRoleId = ensurePortalRole(req.institution_id, 'student', 'Student');
 
     const passwordHash = bcrypt.hashSync(temporary_password, 10);
-    const loginEmail = email || `${admission_number.toLowerCase()}@student.local`;
+    const loginEmail = emptyToNull(email) || `${admission_number.toLowerCase()}@student.local`;
     db.prepare(`
       INSERT INTO users (
         id, institution_id, branch_id, username, email, password_hash,
@@ -164,21 +173,24 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
     `).run(
       userId,
       req.institution_id,
-      branch_id || req.user?.branch_id || null,
+      emptyToNull(branch_id) || emptyToNull(req.user?.branch_id),
       admission_number,
       loginEmail,
       passwordHash,
       first_name,
       last_name,
-      phone || null,
-      photo || null,
+      emptyToNull(phone),
+      emptyToNull(photo),
       studentRoleId,
       id
     );
     ensureUserRole(userId, studentRoleId, true);
     db.prepare(`UPDATE students SET user_id = ? WHERE id = ?`).run(userId, id);
 
-    if (parent) {
+    const relationship = ['father', 'mother', 'guardian', 'other'].includes(String(parent?.relationship || '').toLowerCase())
+      ? String(parent.relationship).toLowerCase()
+      : 'guardian';
+    if (parent?.first_name && parent?.last_name) {
       const parentId = generateId();
       const parentUserId = generateId();
       const parentPassword = generateDefaultPassword();
@@ -191,9 +203,9 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
         req.institution_id, // TENANT ISOLATION
         parent.first_name,
         parent.last_name,
-        parent.relationship || 'guardian',
-        parent.phone || null,
-        parent.email || null,
+        relationship,
+        emptyToNull(parent.phone),
+        emptyToNull(parent.email),
         parent.address || null,
         parent.occupation || null
       );
@@ -218,7 +230,7 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
       `).run(
         parentUserId,
         req.institution_id,
-        branch_id || req.user?.branch_id || null,
+        emptyToNull(branch_id) || emptyToNull(req.user?.branch_id),
         finalParentUsername,
         parent.email || `${finalParentUsername}@parent.local`,
         bcrypt.hashSync(parentPassword, 10),
@@ -233,7 +245,7 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
       db.prepare(`
         INSERT INTO parent_students (id, institution_id, parent_id, student_id, relationship, is_primary)
         VALUES (?, ?, ?, ?, ?, 1)
-      `).run(generateId(), req.institution_id, parentUserId, id, parent.relationship || 'guardian');
+      `).run(generateId(), req.institution_id, parentUserId, id, relationship);
 
       parentCredentials = {
         username: finalParentUsername,
@@ -242,7 +254,23 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
     }
   });
 
-  transaction();
+  try {
+    transaction();
+  } catch (error: any) {
+    console.error('Student creation error:', error);
+    const message = String(error?.message || '');
+    if (message.includes('UNIQUE') && message.toLowerCase().includes('email')) {
+      res.status(409).json({ error: 'That email is already used by another account' });
+      return;
+    }
+    if (message.includes('CHECK')) {
+      res.status(400).json({ error: 'A student field is invalid. Check gender and parent relationship.' });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to create student', details: message });
+    return;
+  }
+
   res.status(201).json({
     id,
     admission_number,

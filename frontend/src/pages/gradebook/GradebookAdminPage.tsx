@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -6,6 +6,12 @@ import api from '../../utils/api';
 import { parseSpreadsheetFile, downloadTextFile } from '../../utils/spreadsheet';
 
 type ColumnDraft = { name: string; weight: number; max_score: number };
+
+function asList(value: any): any[] {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.data)) return value.data;
+  return [];
+}
 
 export default function GradebookAdminPage() {
   const qc = useQueryClient();
@@ -74,6 +80,13 @@ export default function GradebookAdminPage() {
     }
   };
 
+  const weightSum = columns.reduce((sum, col) => sum + Number(col.weight || 0), 0);
+  const classList = asList(classes);
+  const subjectList = asList(subjects);
+  const sessionList = asList(sessions);
+  const termList = asList(terms);
+  const teacherList = asList(teachers);
+
   const downloadTemplate = () => {
     downloadTextFile(
       'gradebook-template.csv',
@@ -87,13 +100,19 @@ export default function GradebookAdminPage() {
       return;
     }
     try {
-      await api.post('/gradebook/generate', { ...form, columns });
+      await api.post('/gradebook/generate', {
+        ...form,
+        session_id: form.session_id || null,
+        term_id: form.term_id || null,
+        section_id: form.section_id || null,
+        columns,
+      });
       toast.success('Gradebook generated');
       setTab('list');
       refetch();
       qc.invalidateQueries({ queryKey: ['gradebooks'] });
     } catch (e: any) {
-      toast.error(e.response?.data?.error || 'Failed to generate');
+      toast.error(e.response?.data?.error || e.response?.data?.details || 'Failed to generate');
     }
   };
 
@@ -156,35 +175,35 @@ export default function GradebookAdminPage() {
               <label className="block text-sm font-medium mb-1">Session</label>
               <select className="input-field" value={form.session_id} onChange={(e) => setForm({ ...form, session_id: e.target.value })}>
                 <option value="">Select</option>
-                {(sessions || []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {sessionList.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Term</label>
               <select className="input-field" value={form.term_id} onChange={(e) => setForm({ ...form, term_id: e.target.value })}>
                 <option value="">Select</option>
-                {(terms || []).map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {termList.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Class *</label>
               <select className="input-field" value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })} required>
                 <option value="">Select</option>
-                {(classes || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {classList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Subject *</label>
               <select className="input-field" value={form.subject_id} onChange={(e) => setForm({ ...form, subject_id: e.target.value })}>
                 <option value="">Select</option>
-                {(subjects || []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {subjectList.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Teacher *</label>
               <select className="input-field" value={form.teacher_id} onChange={(e) => setForm({ ...form, teacher_id: e.target.value })}>
                 <option value="">Select</option>
-                {(teachers || []).map((t: any) => (
+                {teacherList.map((t: any) => (
                   <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>
                 ))}
               </select>

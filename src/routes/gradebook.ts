@@ -295,13 +295,13 @@ gradebookRouter.post('/generate', authorize('platform_admin', 'institution_admin
       : [teacher_id, class_id, subject_id, req.institution_id])
   );
 
-  if (!assignment && session_id) {
+  if (!assignment) {
     db.prepare(`
       INSERT INTO teacher_assignments (
         id, institution_id, employee_id, class_id, section_id, subject_id, session_id, is_class_teacher
       ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)
     `).run(
-      generateId(), req.institution_id, teacher_id, class_id, section_id || null, subject_id, session_id
+      generateId(), req.institution_id, teacher_id, class_id, section_id || null, subject_id, session_id || null
     );
   }
 
@@ -315,7 +315,7 @@ gradebookRouter.post('/generate', authorize('platform_admin', 'institution_admin
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
       `).run(
         id, req.institution_id, session_id || null, term_id || null,
-        class_id, section_id || null, subject_id, teacher_id, req.user!.id
+        class_id, section_id || null, subject_id, teacher_id, req.user!.id || null
       );
 
       const insertCol = db.prepare(`
@@ -335,11 +335,14 @@ gradebookRouter.post('/generate', authorize('platform_admin', 'institution_admin
     });
     tx();
   } catch (e: any) {
-    if (String(e.message || '').includes('UNIQUE')) {
+    const message = String(e.message || '');
+    if (message.includes('UNIQUE')) {
       res.status(409).json({ error: 'A gradebook already exists for this class/subject/teacher/term' });
       return;
     }
-    throw e;
+    console.error('Gradebook generate error:', e);
+    res.status(500).json({ error: 'Failed to generate gradebook', details: message });
+    return;
   }
 
   const detail = loadGradebookDetail(db, id, req.institution_id);
