@@ -131,6 +131,7 @@ function AppContent() {
                 <Route path="/parents" element={<ParentsPage />} />
 
                 <Route path="/teachers" element={<TeachersPage />} />
+                <Route path="/staff" element={<TeachersPage staff />} />
                 <Route path="/teachers/new" element={<TeacherFormPage />} />
                 <Route path="/teachers/:id/edit" element={<TeacherFormPage />} />
 

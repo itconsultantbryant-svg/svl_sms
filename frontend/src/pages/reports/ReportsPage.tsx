@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download, TrendingUp, Users, DollarSign, FileText, Database } from 'lucide-react';
 import api from '../../utils/api';
+import { downloadCsv } from '../../utils/spreadsheet';
 
 type Tab = 'overview' | 'students' | 'financial' | 'attendance' | 'academic' | 'system';
 
@@ -124,7 +125,14 @@ function StudentsReportTab() {
           <option value="inactive">Inactive</option>
           <option value="graduated">Graduated</option>
         </select>
-        <button className="btn-primary ml-auto"><Download size={16} className="mr-2" /> Export</button>
+        <button type="button" className="btn-primary ml-auto" disabled={!students?.length} onClick={() => downloadCsv('students-report.csv', (students || []).map((s) => ({
+          admission_number: s.admission_number,
+          name: `${s.first_name || ''} ${s.last_name || ''}`.trim(),
+          class: s.class_name,
+          gender: s.gender,
+          status: s.status,
+          attendance: s.total_days ? `${((s.present_days / s.total_days) * 100).toFixed(0)}%` : '',
+        })))}><Download size={16} className="mr-2" /> Export</button>
       </div>
 
       <div className="card">
@@ -178,7 +186,9 @@ function FinancialReportTab() {
           <option value="income">Income</option>
           <option value="expense">Expense</option>
         </select>
-        <button className="btn-primary ml-auto"><Download size={16} className="mr-2" /> Export</button>
+        <button type="button" className="btn-primary ml-auto" disabled={!data?.transactions?.length} onClick={() => downloadCsv('financial-report.csv', (data?.transactions || []).map((t: any) => ({
+          date: t.date, type: t.type, category: t.category_name, description: t.description, amount: t.amount,
+        })))}><Download size={16} className="mr-2" /> Export</button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -238,7 +248,15 @@ function AttendanceReportTab() {
       <div className="flex gap-3">
         <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input-field w-auto" />
         <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="input-field w-auto" />
-        <button className="btn-primary ml-auto"><Download size={16} className="mr-2" /> Export</button>
+        <button type="button" className="btn-primary ml-auto" disabled={!data?.length} onClick={() => downloadCsv('attendance-report.csv', (data || []).map((s) => ({
+          admission_number: s.admission_number,
+          name: `${s.first_name || ''} ${s.last_name || ''}`.trim(),
+          class: s.class_name,
+          present: s.present,
+          absent: s.absent,
+          late: s.late,
+          percent: s.total_days ? ((s.present / s.total_days) * 100).toFixed(1) : 0,
+        })))}><Download size={16} className="mr-2" /> Export</button>
       </div>
 
       <div className="card">
@@ -289,7 +307,10 @@ function AcademicReportTab() {
           <option value="">Select Exam</option>
           {exams?.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
-        <button className="btn-primary" disabled={!examId}><Download size={16} className="mr-2" /> Export</button>
+        <button type="button" className="btn-primary" disabled={!data?.length} onClick={() => downloadCsv('academic-report.csv', (data || []).map((s) => ({
+          rank: s.rank, admission_number: s.admission_number, name: `${s.first_name || ''} ${s.last_name || ''}`.trim(),
+          class: s.class_name, marks: `${s.marks_obtained}/${s.total_marks}`, percent: s.percentage, grade: s.grade,
+        })))}><Download size={16} className="mr-2" /> Export</button>
       </div>
 
       {examId && (

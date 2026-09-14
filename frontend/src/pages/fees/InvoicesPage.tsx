@@ -2,14 +2,22 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../utils/api';
+import RecordView from '../../components/common/RecordView';
 
 export default function InvoicesPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
+  const [viewId, setViewId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ['invoices', page, status],
     queryFn: () => api.get('/fees/invoices', { params: { page, limit: 20, status: status || undefined } }).then(r => r.data),
+  });
+
+  const { data: viewed } = useQuery<any>({
+    queryKey: ['invoice-view', viewId],
+    queryFn: () => api.get(`/fees/invoices/${viewId}`).then((r) => r.data),
+    enabled: !!viewId,
   });
 
   const totalPages = Math.ceil((data?.total || 0) / 20);
@@ -56,13 +64,14 @@ export default function InvoicesPage() {
                 <th className="text-right py-3 px-3 font-medium text-gray-500">Balance</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Status</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Due</th>
+                <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={9} className="py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={10} className="py-12 text-center text-gray-400">Loading...</td></tr>
               ) : !data?.data?.length ? (
-                <tr><td colSpan={9} className="py-12 text-center text-gray-400">No invoices found</td></tr>
+                <tr><td colSpan={10} className="py-12 text-center text-gray-400">No invoices found</td></tr>
               ) : data.data.map((inv: any) => (
                 <tr key={inv.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="py-3 px-3 font-medium text-primary-600">{inv.invoice_number}</td>
@@ -78,6 +87,9 @@ export default function InvoicesPage() {
                     </span>
                   </td>
                   <td className="py-3 px-3 text-gray-500">{inv.due_date || '-'}</td>
+                  <td className="py-3 px-3">
+                    <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(inv.id)}>View</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -94,6 +106,23 @@ export default function InvoicesPage() {
           </div>
         )}
       </div>
+      {viewed && viewId && (
+        <RecordView
+          title={viewed.invoice_number || 'Invoice'}
+          onClose={() => setViewId(null)}
+          fields={[
+            { label: 'Student', value: `${viewed.first_name || ''} ${viewed.last_name || ''}`.trim() },
+            { label: 'Admission number', value: viewed.admission_number },
+            { label: 'Class', value: viewed.class_name },
+            { label: 'Total', value: viewed.total_amount },
+            { label: 'Paid', value: viewed.paid_amount },
+            { label: 'Balance', value: viewed.balance },
+            { label: 'Status', value: viewed.status },
+            { label: 'Due date', value: viewed.due_date },
+            { label: 'Items', value: viewed.items },
+          ]}
+        />
+      )}
     </div>
   );
 }

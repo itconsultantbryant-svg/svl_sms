@@ -4,14 +4,22 @@ import { Link } from 'react-router-dom';
 import { Plus, Search, Edit2 } from 'lucide-react';
 import api from '../../utils/api';
 import { PaginatedResponse, Employee } from '../../types';
+import RecordView from '../../components/common/RecordView';
 
-export default function TeachersPage() {
+export default function TeachersPage({ staff = false }: { staff?: boolean }) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [viewId, setViewId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery<PaginatedResponse<Employee>>({
-    queryKey: ['teachers', page, search],
-    queryFn: () => api.get('/teachers', { params: { page, limit: 20, search } }).then(r => r.data),
+    queryKey: [staff ? 'staff' : 'teachers', page, search],
+    queryFn: () => api.get('/teachers', { params: { page, limit: 20, search, staff: staff ? 1 : undefined } }).then(r => r.data),
+  });
+
+  const { data: viewed } = useQuery<any>({
+    queryKey: ['employee-view', viewId],
+    queryFn: () => api.get(`/teachers/${viewId}`).then((r) => r.data),
+    enabled: !!viewId,
   });
 
   const totalPages = Math.ceil((data?.total || 0) / 20);
@@ -20,13 +28,13 @@ export default function TeachersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Teachers</h1>
-          <p className="text-sm text-gray-500 mt-1">{data?.total || 0} teachers total</p>
+          <h1 className="text-2xl font-bold text-gray-900">{staff ? 'Staff' : 'Teachers'}</h1>
+          <p className="text-sm text-gray-500 mt-1">{data?.total || 0} {staff ? 'staff' : 'teachers'} total</p>
         </div>
-        <Link to="/teachers/new" className="btn-primary">
+        {!staff && <Link to="/teachers/new" className="btn-primary">
           <Plus size={16} className="mr-2" />
           Add Teacher
-        </Link>
+        </Link>}
       </div>
 
       <div className="card">
@@ -82,9 +90,14 @@ export default function TeachersPage() {
                     <td className="py-3 px-3">{teacher.phone || '-'}</td>
                     <td className="py-3 px-3">{teacher.branch_name || '-'}</td>
                     <td className="py-3 px-3">
-                      <Link to={`/teachers/${teacher.id}/edit`} className="text-gray-400 hover:text-primary-600">
-                        <Edit2 size={15} />
-                      </Link>
+                      <div className="flex items-center gap-3">
+                        <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(teacher.id)}>View</button>
+                        {!staff && (
+                          <Link to={`/teachers/${teacher.id}/edit`} className="text-gray-400 hover:text-primary-600">
+                            <Edit2 size={15} />
+                          </Link>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -103,6 +116,22 @@ export default function TeachersPage() {
           </div>
         )}
       </div>
+      {viewed && viewId && (
+        <RecordView
+          title={`${viewed.first_name || ''} ${viewed.last_name || ''}`.trim() || (staff ? 'Staff' : 'Teacher')}
+          onClose={() => setViewId(null)}
+          fields={[
+            { label: 'Employee ID', value: viewed.employee_id },
+            { label: 'Department', value: viewed.department_name },
+            { label: 'Designation', value: viewed.designation_name },
+            { label: 'Phone', value: viewed.phone },
+            { label: 'Email', value: viewed.email },
+            { label: 'Branch', value: viewed.branch_name },
+            { label: 'Qualification', value: viewed.qualification },
+            { label: 'Assignments', value: viewed.assignments },
+          ]}
+        />
+      )}
     </div>
   );
 }

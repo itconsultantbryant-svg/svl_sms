@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { DollarSign, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import { openPrintDocument } from '../../utils/printDocument';
 
 export default function PaymentsPage() {
   const location = useLocation();
@@ -250,8 +251,8 @@ function ReceiptView({ receipt, onBack }: { receipt: any; onBack: () => void }) 
         </div>
 
         <div className="mt-6 text-center">
-          <button onClick={() => window.print()} className="btn-primary print:hidden">
-            <Printer size={16} className="mr-2" /> Print Receipt
+          <button onClick={() => openPrintDocument(`Receipt ${payment.payment_number || ''}`, document.getElementById('receipt')?.innerHTML || '')} className="btn-primary">
+            <Printer size={16} className="mr-2" /> Preview / Download
           </button>
         </div>
       </div>

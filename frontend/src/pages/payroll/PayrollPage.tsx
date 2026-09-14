@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Play, FileText, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import { openPrintDocument } from '../../utils/printDocument';
 
 type Tab = 'runs' | 'salaries' | 'structures' | 'leaves' | 'loans';
 
@@ -191,7 +192,7 @@ function PayslipView({ id, onBack }: { id: string; onBack: () => void }) {
         </div>
 
         <div className="mt-6 text-center print:hidden">
-          <button onClick={() => window.print()} className="btn-primary"><Printer size={16} className="mr-2" /> Print</button>
+          <button onClick={() => openPrintDocument(`Payslip ${payslip.first_name} ${payslip.last_name}`, document.getElementById('payslip')?.innerHTML || '')} className="btn-primary"><Printer size={16} className="mr-2" /> Preview / Download</button>
         </div>
       </div>
     </div>

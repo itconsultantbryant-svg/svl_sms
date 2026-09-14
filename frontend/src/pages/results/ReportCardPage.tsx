@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
 import api from '../../utils/api';
+import { openPrintDocument } from '../../utils/printDocument';
 
 export default function ReportCardPage() {
   const { studentId, examId } = useParams();
@@ -23,8 +24,8 @@ export default function ReportCardPage() {
           <Link to={`/examinations/${examId}/results`} className="text-gray-400 hover:text-gray-600"><ArrowLeft size={20} /></Link>
           <h1 className="text-2xl font-bold text-gray-900">Report Card</h1>
         </div>
-        <button onClick={() => window.print()} className="btn-primary">
-          <Printer size={16} className="mr-2" /> Print
+        <button onClick={() => openPrintDocument('Report card', document.getElementById('report-card')?.innerHTML || '')} className="btn-primary">
+          <Printer size={16} className="mr-2" /> Preview / Download
         </button>
       </div>
 

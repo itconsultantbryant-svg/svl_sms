@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordView from '../../components/common/RecordView';
 
 export default function SchoolUsersPage() {
   const qc = useQueryClient();
@@ -15,6 +16,7 @@ export default function SchoolUsersPage() {
     extra_permissions: [] as string[],
   });
   const [created, setCreated] = useState<{ username: string; temporary_password: string } | null>(null);
+  const [viewUser, setViewUser] = useState<any>(null);
 
   const { data: usersData } = useQuery({
     queryKey: ['school-users'],
@@ -163,7 +165,8 @@ export default function SchoolUsersPage() {
                     {(u.roles || []).map((r: any) => r.name).join(', ') || 'Assign via form'}
                   </button>
                 </td>
-                <td className="py-2 text-right">
+                <td className="py-2 text-right space-x-3">
+                  <button type="button" className="text-primary-600 text-xs" onClick={() => setViewUser(u)}>View</button>
                   {u.user_type !== 'platform_admin' && (
                     <button
                       type="button"
@@ -188,6 +191,20 @@ export default function SchoolUsersPage() {
           </tbody>
         </table>
       </div>
+      {viewUser && (
+        <RecordView
+          title={`${viewUser.first_name || ''} ${viewUser.last_name || ''}`.trim() || 'User'}
+          onClose={() => setViewUser(null)}
+          fields={[
+            { label: 'Username', value: viewUser.username },
+            { label: 'Email', value: viewUser.email },
+            { label: 'Phone', value: viewUser.phone },
+            { label: 'Type', value: viewUser.user_type },
+            { label: 'Roles', value: (viewUser.roles || []).map((r: any) => r.name || r.role_name) },
+            { label: 'Status', value: viewUser.is_active ? 'Active' : 'Inactive' },
+          ]}
+        />
+      )}
     </div>
   );
 }

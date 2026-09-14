@@ -1,6 +1,7 @@
 import { useState, ReactNode } from 'react';
 import DynamicSidebar from './DynamicSidebar';
 import Header from './Header';
+import DocumentPreviewHost from '../common/DocumentPreviewHost';
 
 export default function MainLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -13,6 +14,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         <main className="flex-1 p-5 overflow-auto">
           {children}
         </main>
+        <DocumentPreviewHost />
       </div>
     </div>
   );

@@ -55,6 +55,23 @@ export function downloadTextFile(filename: string, contents: string, mime = 'tex
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function csvCell(value: unknown): string {
+  const text = String(value ?? '');
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+export function downloadCsv(filename: string, rows: Array<Record<string, unknown>>) {
+  if (!rows.length) return;
+  const keys = Object.keys(rows[0]);
+  const lines = [
+    keys.join(','),
+    ...rows.map((row) => keys.map((key) => csvCell(row[key])).join(',')),
+  ];
+  downloadTextFile(filename.endsWith('.csv') ? filename : `${filename}.csv`, lines.join('\n'));
 }

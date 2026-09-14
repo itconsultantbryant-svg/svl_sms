@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { parseSpreadsheetFile, downloadTextFile } from '../../utils/spreadsheet';
-import { escapeHtml, openPrintDocument } from '../../utils/printDocument';
+import { escapeHtml, openPrintDocument, downloadStoredFile } from '../../utils/printDocument';
 
 export default function LessonPlansAdminPage() {
   const qc = useQueryClient();
@@ -203,9 +203,9 @@ export default function LessonPlansAdminPage() {
                 <td className="py-2">
                   <button type="button" className="text-primary-600 mr-3" onClick={() => preview(p)}>Preview / PDF</button>
                   {p.file_data ? (
-                    <a href={p.file_data} download={p.file_name || 'lesson-plan'} className="text-primary-600">
+                    <button type="button" className="text-primary-600" onClick={() => downloadStoredFile(p.file_data, p.file_name || 'lesson-plan')}>
                       Download
-                    </a>
+                    </button>
                   ) : '—'}
                 </td>
               </tr>

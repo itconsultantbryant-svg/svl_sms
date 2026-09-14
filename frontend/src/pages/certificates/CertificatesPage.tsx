@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, FileText, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import { openPrintDocument } from '../../utils/printDocument';
 
 type Tab = 'certificates' | 'templates' | 'id-cards';
 
@@ -60,7 +61,7 @@ function CertificatesTab() {
             <p>Date: {viewCert.certificate.issued_date}</p>
           </div>
           <div className="mt-6 text-center print:hidden">
-            <button onClick={() => window.print()} className="btn-primary"><Printer size={16} className="mr-2" /> Print</button>
+            <button onClick={() => openPrintDocument('Certificate', document.getElementById('certificate')?.innerHTML || '')} className="btn-primary"><Printer size={16} className="mr-2" /> Preview / Download</button>
           </div>
         </div>
       </div>
@@ -224,7 +225,7 @@ function IdCardsTab() {
       )}
       {cardData && (
         <div className="text-center print:hidden">
-          <button onClick={() => window.print()} className="btn-primary"><Printer size={16} className="mr-2" /> Print ID Card</button>
+          <button onClick={() => openPrintDocument('ID Card', document.getElementById('id-card')?.innerHTML || '')} className="btn-primary"><Printer size={16} className="mr-2" /> Preview / Download</button>
         </div>
       )}
     </div>

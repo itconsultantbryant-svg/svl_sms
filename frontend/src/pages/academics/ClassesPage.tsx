@@ -4,11 +4,13 @@ import { Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { Class, Branch } from '../../types';
+import RecordView from '../../components/common/RecordView';
 
 export default function ClassesPage() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', numeric_name: '', capacity: '', branch_id: '', sort_order: '' });
+  const [viewId, setViewId] = useState<string | null>(null);
 
   const { data: classes, isLoading } = useQuery<Class[]>({
     queryKey: ['classes'],
@@ -18,6 +20,12 @@ export default function ClassesPage() {
   const { data: branches } = useQuery<Branch[]>({
     queryKey: ['branches'],
     queryFn: () => api.get('/branches').then(r => r.data),
+  });
+
+  const { data: classSubjects } = useQuery<any[]>({
+    queryKey: ['class-subjects', viewId],
+    queryFn: () => api.get('/academics/class-subjects', { params: { class_id: viewId } }).then((r) => r.data),
+    enabled: !!viewId,
   });
 
   const createMutation = useMutation({
@@ -90,13 +98,14 @@ export default function ClassesPage() {
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Capacity</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Students</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Status</th>
+                <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={5} className="py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
               ) : classes?.length === 0 ? (
-                <tr><td colSpan={5} className="py-12 text-center text-gray-400">No classes found</td></tr>
+                <tr><td colSpan={6} className="py-12 text-center text-gray-400">No classes found</td></tr>
               ) : (
                 classes?.map((cls) => (
                   <tr key={cls.id} className="border-b border-gray-100 hover:bg-gray-50">
@@ -111,6 +120,9 @@ export default function ClassesPage() {
                         {cls.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
+                    <td className="py-3 px-3">
+                      <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(cls.id)}>View</button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -118,6 +130,18 @@ export default function ClassesPage() {
           </table>
         </div>
       </div>
+      {viewId && (
+        <RecordView
+          title={classes?.find((item) => item.id === viewId)?.name || 'Class'}
+          onClose={() => setViewId(null)}
+          fields={[
+            { label: 'Branch', value: classes?.find((item) => item.id === viewId)?.branch_name },
+            { label: 'Capacity', value: classes?.find((item) => item.id === viewId)?.capacity },
+            { label: 'Students', value: classes?.find((item) => item.id === viewId)?.student_count },
+            { label: 'Subjects', value: (classSubjects || []).map((item) => item.subject_name) },
+          ]}
+        />
+      )}
     </div>
   );
 }

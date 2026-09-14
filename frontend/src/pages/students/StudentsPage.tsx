@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Plus, Search, Edit2 } from 'lucide-react';
 import api from '../../utils/api';
+import RecordView from '../../components/common/RecordView';
 import { PaginatedResponse, Student, Class, Branch } from '../../types';
 
 export default function StudentsPage() {
@@ -10,6 +11,7 @@ export default function StudentsPage() {
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
+  const [viewId, setViewId] = useState<string | null>(null);
 
   const { data: studentsData, isLoading } = useQuery<PaginatedResponse<Student>>({
     queryKey: ['students', page, search, classFilter, branchFilter],
@@ -26,6 +28,12 @@ export default function StudentsPage() {
   const { data: branches } = useQuery<Branch[]>({
     queryKey: ['branches'],
     queryFn: () => api.get('/branches').then(r => r.data),
+  });
+
+  const { data: viewed } = useQuery<any>({
+    queryKey: ['student-view', viewId],
+    queryFn: () => api.get(`/students/${viewId}`).then((r) => r.data),
+    enabled: !!viewId,
   });
 
   const totalPages = Math.ceil((studentsData?.total || 0) / 20);
@@ -122,7 +130,8 @@ export default function StudentsPage() {
                       </span>
                     </td>
                     <td className="py-3 px-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
+                        <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(student.id)}>View</button>
                         <Link to={`/students/${student.id}/edit`} className="text-gray-400 hover:text-primary-600">
                           <Edit2 size={15} />
                         </Link>
@@ -159,6 +168,25 @@ export default function StudentsPage() {
           </div>
         )}
       </div>
+      {viewed && viewId && (
+        <RecordView
+          title={`${viewed.first_name || ''} ${viewed.last_name || ''}`.trim() || 'Student'}
+          onClose={() => setViewId(null)}
+          fields={[
+            { label: 'Admission number', value: viewed.admission_number },
+            { label: 'Class', value: viewed.class_name },
+            { label: 'Section', value: viewed.section_name },
+            { label: 'Session', value: viewed.session_name },
+            { label: 'Gender', value: viewed.gender },
+            { label: 'Date of birth', value: viewed.date_of_birth },
+            { label: 'Phone', value: viewed.phone },
+            { label: 'Email', value: viewed.email },
+            { label: 'Address', value: viewed.address },
+            { label: 'Status', value: viewed.status },
+            { label: 'Parents', value: viewed.parents },
+          ]}
+        />
+      )}
     </div>
   );
 }

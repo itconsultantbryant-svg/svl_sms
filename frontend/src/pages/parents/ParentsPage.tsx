@@ -3,14 +3,22 @@ import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import api from '../../utils/api';
 import { PaginatedResponse, Parent } from '../../types';
+import RecordView from '../../components/common/RecordView';
 
 export default function ParentsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [viewId, setViewId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery<PaginatedResponse<Parent>>({
     queryKey: ['parents', page, search],
     queryFn: () => api.get('/parents', { params: { page, limit: 20, search } }).then(r => r.data),
+  });
+
+  const { data: viewed } = useQuery<any>({
+    queryKey: ['parent-view', viewId],
+    queryFn: () => api.get(`/parents/${viewId}`).then((r) => r.data),
+    enabled: !!viewId,
   });
 
   const totalPages = Math.ceil((data?.total || 0) / 20);
@@ -48,13 +56,14 @@ export default function ParentsPage() {
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Email</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Children</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Occupation</th>
+                <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={7} className="py-12 text-center text-gray-400">Loading...</td></tr>
               ) : data?.data.length === 0 ? (
-                <tr><td colSpan={6} className="py-12 text-center text-gray-400">No parents found</td></tr>
+                <tr><td colSpan={7} className="py-12 text-center text-gray-400">No parents found</td></tr>
               ) : (
                 data?.data.map((parent) => (
                   <tr key={parent.id} className="border-b border-gray-100 hover:bg-gray-50">
@@ -64,6 +73,9 @@ export default function ParentsPage() {
                     <td className="py-3 px-3">{parent.email || '-'}</td>
                     <td className="py-3 px-3">{parent.children_count || 0}</td>
                     <td className="py-3 px-3">{parent.occupation || '-'}</td>
+                    <td className="py-3 px-3">
+                      <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(parent.id)}>View</button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -81,6 +93,20 @@ export default function ParentsPage() {
           </div>
         )}
       </div>
+      {viewed && viewId && (
+        <RecordView
+          title={`${viewed.first_name || ''} ${viewed.last_name || ''}`.trim() || 'Parent'}
+          onClose={() => setViewId(null)}
+          fields={[
+            { label: 'Relationship', value: viewed.relationship },
+            { label: 'Phone', value: viewed.phone },
+            { label: 'Email', value: viewed.email },
+            { label: 'Occupation', value: viewed.occupation },
+            { label: 'Address', value: viewed.address },
+            { label: 'Children', value: viewed.children },
+          ]}
+        />
+      )}
     </div>
   );
 }

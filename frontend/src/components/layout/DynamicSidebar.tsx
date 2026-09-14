@@ -128,6 +128,7 @@ function buildNavigation(homePath: string): MenuItem[] {
       userTypes: ['platform_admin', 'institution_admin'],
       children: [
         { name: 'Teachers', href: '/teachers' },
+        { name: 'Staff', href: '/staff' },
         { name: 'Departments', href: '/academics/departments' },
         { name: 'Payroll', href: '/payroll' },
       ],

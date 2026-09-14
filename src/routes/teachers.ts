@@ -14,7 +14,7 @@ teachersRouter.use(requireTenant);
 
 teachersRouter.get('/', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const { page = '1', limit = '20', search = '', branch = '', department = '' } = req.query as any;
+  const { page = '1', limit = '20', search = '', branch = '', department = '', staff = '' } = req.query as any;
   const { limit: lim, offset } = paginate(parseInt(page), parseInt(limit));
   const { clause: searchClause, params: searchParams } = buildSearchQuery(
     ['e.first_name', 'e.last_name', 'e.employee_id', 'e.email'],
@@ -23,7 +23,8 @@ teachersRouter.get('/', (req: AuthRequest, res: Response) => {
 
   // TENANT ISOLATION: Always filter by institution_id (null for platform admins)
   const institutionFilter = req.institution_id ? `e.institution_id = '${req.institution_id}'` : '1=1';
-  let where = `WHERE ${institutionFilter} AND e.is_teacher = 1 AND e.is_active = 1 ` + searchClause;
+  const roleFilter = staff === '1' ? '(e.is_teacher = 0 OR e.is_teacher IS NULL)' : 'e.is_teacher = 1';
+  let where = `WHERE ${institutionFilter} AND ${roleFilter} AND (e.is_active = 1 OR e.is_active IS NULL) ` + searchClause;
   const params: any[] = [...searchParams];
 
   if (branch) { where += ' AND e.branch_id = ?'; params.push(branch); }
@@ -58,7 +59,7 @@ teachersRouter.get('/:id', (req: AuthRequest, res: Response) => {
     LEFT JOIN departments d ON e.department_id = d.id
     LEFT JOIN designations des ON e.designation_id = des.id
     LEFT JOIN branches b ON e.branch_id = b.id
-    WHERE e.id = ? ${institutionFilter} AND e.is_teacher = 1
+    WHERE e.id = ? ${institutionFilter}
   `).get(id) as any;
 
   if (!teacher) {

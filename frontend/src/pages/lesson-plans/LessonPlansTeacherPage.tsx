@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
-import { escapeHtml, openPrintDocument } from '../../utils/printDocument';
+import { escapeHtml, openPrintDocument, downloadStoredFile } from '../../utils/printDocument';
 
 export default function LessonPlansTeacherPage() {
   const { data, refetch, isLoading } = useQuery({
@@ -42,14 +42,16 @@ export default function LessonPlansTeacherPage() {
             </div>
             <div className="flex gap-2">
               {p.file_data && (
-                <a
-                  href={p.file_data}
-                  download={p.file_name || 'lesson-plan'}
+                <button
+                  type="button"
                   className="btn-primary text-sm"
-                  onClick={() => markSeen(p.id)}
+                  onClick={() => {
+                    downloadStoredFile(p.file_data, p.file_name || 'lesson-plan');
+                    markSeen(p.id);
+                  }}
                 >
                   Open / Download
-                </a>
+                </button>
               )}
               <button
                 type="button"
