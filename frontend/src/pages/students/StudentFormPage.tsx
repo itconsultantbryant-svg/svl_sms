@@ -46,7 +46,7 @@ export default function StudentFormPage() {
 
   const { data: sessions } = useQuery<AcademicSession[]>({
     queryKey: ['sessions'],
-    queryFn: () => api.get('/academics/sessions').then(r => r.data),
+    queryFn: () => api.get('/academics/sessions').then(r => Array.isArray(r.data) ? r.data : Array.isArray(r.data?.data) ? r.data.data : []),
   });
 
   useEffect(() => {
@@ -95,7 +95,7 @@ export default function StudentFormPage() {
         toast.success('Student admitted — save the login credentials below');
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Operation failed');
+      toast.error(err.response?.data?.error || err.response?.data?.details || 'Operation failed');
     } finally {
       setLoading(false);
     }
@@ -220,14 +220,14 @@ export default function StudentFormPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
               <select name="branch_id" value={form.branch_id} onChange={handleChange} className="input-field">
                 <option value="">Select Branch</option>
-                {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                {(Array.isArray(branches) ? branches : []).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
               <select name="class_id" value={form.class_id} onChange={handleChange} className="input-field">
                 <option value="">Select Class</option>
-                {classes?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {(Array.isArray(classes) ? classes : []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
@@ -241,7 +241,8 @@ export default function StudentFormPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Academic Session</label>
               <select name="session_id" value={form.session_id} onChange={handleChange} className="input-field">
                 <option value="">Select Session</option>
-                {sessions?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {(Array.isArray(sessions) ? sessions : []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {Array.isArray(sessions) && !sessions.length && <option value="" disabled>No sessions yet — create one under Academics</option>}
               </select>
             </div>
             <div>

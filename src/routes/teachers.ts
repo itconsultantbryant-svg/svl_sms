@@ -232,23 +232,45 @@ teachersRouter.put('/:id', authorize('platform_admin', 'institution_admin', 'hr_
 
 teachersRouter.post('/:id/assignments', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { class_id, section_id, subject_id, session_id, is_class_teacher } = req.body;
+  const { class_id, section_id, subject_id, session_id, is_class_teacher, class_ids, subject_ids } = req.body;
+  const classes = Array.isArray(class_ids) && class_ids.length ? class_ids : class_id ? [class_id] : [];
+  const subjects = Array.isArray(subject_ids) && subject_ids.length ? subject_ids : subject_id ? [subject_id] : [];
 
-  if (!class_id || !subject_id || !session_id) {
-    res.status(400).json({ error: 'Class, subject, and session are required' });
+  if (!classes.length || !subjects.length) {
+    res.status(400).json({ error: 'Select at least one class and one subject' });
+    return;
+  }
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school before assigning a teacher' });
     return;
   }
 
   const db = getDatabase();
-  const assignId = generateId();
-
-  // TENANT ISOLATION: Include institution_id in INSERT
-  db.prepare(`
-    INSERT OR IGNORE INTO teacher_assignments (id, institution_id, employee_id, class_id, section_id, subject_id, session_id, is_class_teacher)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(assignId, req.institution_id, id, class_id, section_id || null, subject_id, session_id, is_class_teacher ? 1 : 0);
-
-  res.status(201).json({ id: assignId, message: 'Assignment created successfully' });
+  const session = session_id || (db.prepare('SELECT id FROM academic_sessions WHERE institution_id = ? AND is_current = 1 LIMIT 1').get(req.institution_id) as any)?.id || null;
+  const created: string[] = [];
+  try {
+    const insert = db.prepare(`
+      INSERT INTO teacher_assignments (id, institution_id, employee_id, class_id, section_id, subject_id, session_id, is_class_teacher)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const cid of classes) {
+      for (const sid of subjects) {
+        const existing = db.prepare(`
+          SELECT id FROM teacher_assignments
+          WHERE employee_id = ? AND class_id = ? AND subject_id = ? AND institution_id = ?
+            AND IFNULL(section_id, '') = IFNULL(?, '') AND IFNULL(session_id, '') = IFNULL(?, '')
+        `).get(id, cid, sid, req.institution_id, section_id || null, session) as any;
+        if (existing) continue;
+        const assignId = generateId();
+        insert.run(assignId, req.institution_id, id, cid, section_id || null, sid, session, is_class_teacher ? 1 : 0);
+        created.push(assignId);
+      }
+    }
+    res.status(201).json({ ids: created, count: created.length, message: created.length ? 'Assignments created' : 'Those class and subject assignments already exist' });
+  } catch (err: any) {
+    console.error('Teacher assignment error:', err);
+    res.status(500).json({ error: 'Failed to assign classes and subjects', details: err.message });
+  }
 });
 
 teachersRouter.delete('/:id/assignments/:assignmentId', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {

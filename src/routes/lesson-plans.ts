@@ -11,10 +11,18 @@ lessonPlansRouter.use(requireTenant);
 
 function getTeacherEmployeeId(req: AuthRequest): string | null {
   const db = getDatabase();
-  const inst = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
   const teacher = db.prepare(`
-    SELECT id FROM employees WHERE user_id = ? ${inst} AND is_teacher = 1
-  `).get(req.user!.id) as any;
+    SELECT id FROM employees
+    WHERE (is_active = 1 OR is_active IS NULL)
+      AND (institution_id = ? OR institution_id IS NULL)
+      AND (
+        user_id = ?
+        OR id = (SELECT linked_entity_id FROM users WHERE id = ? AND linked_entity_type = 'employee')
+      )
+  `).get(req.institution_id, req.user!.id, req.user!.id) as any;
+  if (teacher?.id && req.user?.id) {
+    db.prepare(`UPDATE employees SET user_id = ?, is_teacher = 1 WHERE id = ? AND (user_id IS NULL OR user_id = '')`).run(req.user.id, teacher.id);
+  }
   return teacher?.id || null;
 }
 
@@ -95,8 +103,10 @@ lessonPlansRouter.get('/:id', (req: AuthRequest, res: Response) => {
 lessonPlansRouter.post('/', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   const {
     title, description, class_id, subject_id, session_id, term_id,
-    file_data, file_name, mime_type, teacher_ids
+    file_data, file_name, mime_type, teacher_ids, class_ids, subject_ids
   } = req.body;
+  const classIds = (Array.isArray(class_ids) && class_ids.length ? class_ids : [class_id || null]);
+  const subjectIds = (Array.isArray(subject_ids) && subject_ids.length ? subject_ids : [subject_id || null]);
 
   if (!title) {
     res.status(400).json({ error: 'title is required' });
@@ -104,29 +114,32 @@ lessonPlansRouter.post('/', authorize('platform_admin', 'institution_admin'), (r
   }
 
   const db = getDatabase();
-  const id = generateId();
   const hasRecipients = Array.isArray(teacher_ids) && teacher_ids.length > 0;
+  const created: string[] = [];
 
   const tx = db.transaction(() => {
-    db.prepare(`
-      INSERT INTO lesson_plans (
-        id, institution_id, title, description, class_id, subject_id, session_id, term_id,
-        file_data, file_name, mime_type, created_by, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, req.institution_id, title, description || null,
-      class_id || null, subject_id || null, session_id || null, term_id || null,
-      file_data || null, file_name || null, mime_type || null,
-      req.user!.id, hasRecipients ? 'sent' : 'draft'
-    );
-
-    if (hasRecipients) {
-      const insert = db.prepare(`
-        INSERT OR IGNORE INTO lesson_plan_recipients (id, lesson_plan_id, teacher_id, sent_at)
-        VALUES (?, ?, ?, datetime('now'))
-      `);
-      for (const tid of teacher_ids) {
-        insert.run(generateId(), id, tid);
+    for (const cid of classIds) {
+      for (const sid of subjectIds) {
+        const id = generateId();
+        db.prepare(`
+          INSERT INTO lesson_plans (
+            id, institution_id, title, description, class_id, subject_id, session_id, term_id,
+            file_data, file_name, mime_type, created_by, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id, req.institution_id, title, description || null,
+          cid || null, sid || null, session_id || null, term_id || null,
+          file_data || null, file_name || null, mime_type || null,
+          req.user!.id, hasRecipients ? 'sent' : 'draft'
+        );
+        if (hasRecipients) {
+          const insert = db.prepare(`
+            INSERT OR IGNORE INTO lesson_plan_recipients (id, lesson_plan_id, teacher_id, sent_at)
+            VALUES (?, ?, ?, datetime('now'))
+          `);
+          for (const tid of teacher_ids) insert.run(generateId(), id, tid);
+        }
+        created.push(id);
       }
     }
   });
@@ -138,7 +151,7 @@ lessonPlansRouter.post('/', authorize('platform_admin', 'institution_admin'), (r
     return;
   }
 
-  res.status(201).json({ id, message: 'Lesson plan created', status: hasRecipients ? 'sent' : 'draft' });
+  res.status(201).json({ id: created[0], ids: created, count: created.length, message: 'Lesson plan created', status: hasRecipients ? 'sent' : 'draft' });
 });
 
 lessonPlansRouter.put('/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {

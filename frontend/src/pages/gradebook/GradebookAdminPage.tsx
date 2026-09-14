@@ -19,11 +19,11 @@ export default function GradebookAdminPage() {
   const [form, setForm] = useState({
     session_id: '',
     term_id: '',
-    class_id: '',
     section_id: '',
-    subject_id: '',
     teacher_id: '',
   });
+  const [classIds, setClassIds] = useState<string[]>([]);
+  const [subjectIds, setSubjectIds] = useState<string[]>([]);
   const [columns, setColumns] = useState<ColumnDraft[]>([
     { name: 'Quiz', weight: 10, max_score: 100 },
     { name: 'Homework', weight: 20, max_score: 100 },
@@ -100,14 +100,20 @@ export default function GradebookAdminPage() {
       return;
     }
     try {
-      await api.post('/gradebook/generate', {
+      if (!classIds.length || !subjectIds.length) {
+        toast.error('Select at least one class and one subject');
+        return;
+      }
+      const res = await api.post('/gradebook/generate', {
         ...form,
+        class_ids: classIds,
+        subject_ids: subjectIds,
         session_id: form.session_id || null,
         term_id: form.term_id || null,
         section_id: form.section_id || null,
         columns,
       });
-      toast.success('Gradebook generated');
+      toast.success(`Generated ${res.data.count || 1} gradebook(s)`);
       setTab('list');
       refetch();
       qc.invalidateQueries({ queryKey: ['gradebooks'] });
@@ -186,18 +192,28 @@ export default function GradebookAdminPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Class *</label>
-              <select className="input-field" value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })} required>
-                <option value="">Select</option>
-                {classList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <label className="block text-sm font-medium mb-1">Classes *</label>
+              <div className="max-h-36 overflow-y-auto border rounded-lg p-2 space-y-1">
+                {classList.map((c: any) => (
+                  <label key={c.id} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={classIds.includes(c.id)} onChange={() => setClassIds((ids) => ids.includes(c.id) ? ids.filter((id) => id !== c.id) : [...ids, c.id])} />
+                    {c.name}
+                  </label>
+                ))}
+                {!classList.length && <p className="text-xs text-gray-400">No classes yet</p>}
+              </div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Subject *</label>
-              <select className="input-field" value={form.subject_id} onChange={(e) => setForm({ ...form, subject_id: e.target.value })}>
-                <option value="">Select</option>
-                {subjectList.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              <label className="block text-sm font-medium mb-1">Subjects *</label>
+              <div className="max-h-36 overflow-y-auto border rounded-lg p-2 space-y-1">
+                {subjectList.map((s: any) => (
+                  <label key={s.id} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={subjectIds.includes(s.id)} onChange={() => setSubjectIds((ids) => ids.includes(s.id) ? ids.filter((id) => id !== s.id) : [...ids, s.id])} />
+                    {s.name}
+                  </label>
+                ))}
+                {!subjectList.length && <p className="text-xs text-gray-400">No subjects yet</p>}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Teacher *</label>
@@ -262,7 +278,7 @@ export default function GradebookAdminPage() {
             </div>
           </div>
 
-          <button type="button" onClick={generate} className="btn-primary" disabled={!form.class_id || !form.subject_id || !form.teacher_id}>
+          <button type="button" onClick={generate} className="btn-primary" disabled={!classIds.length || !subjectIds.length || !form.teacher_id}>
             Generate Gradebook
           </button>
         </div>

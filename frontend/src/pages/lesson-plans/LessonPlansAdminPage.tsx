@@ -11,8 +11,8 @@ export default function LessonPlansAdminPage() {
   const [form, setForm] = useState({
     title: '',
     description: '',
-    class_id: '',
-    subject_id: '',
+    class_ids: [] as string[],
+    subject_ids: [] as string[],
     teacher_ids: [] as string[],
     file_data: '',
     file_name: '',
@@ -63,7 +63,7 @@ export default function LessonPlansAdminPage() {
       toast.success(form.teacher_ids.length ? 'Lesson plan sent to teachers' : 'Lesson plan saved');
       setShowForm(false);
       setForm({
-        title: '', description: '', class_id: '', subject_id: '',
+        title: '', description: '', class_ids: [], subject_ids: [],
         teacher_ids: [], file_data: '', file_name: '', mime_type: '',
       });
       refetch();
@@ -124,18 +124,26 @@ export default function LessonPlansAdminPage() {
               <textarea className="input-field" rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Class</label>
-              <select className="input-field" value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })}>
-                <option value="">Any</option>
-                {asList(classes).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <label className="block text-sm font-medium mb-1">Classes</label>
+              <div className="max-h-36 overflow-y-auto border rounded-lg p-2 space-y-1">
+                {asList(classes).map((c: any) => (
+                  <label key={c.id} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={form.class_ids.includes(c.id)} onChange={() => setForm((prev) => ({ ...prev, class_ids: prev.class_ids.includes(c.id) ? prev.class_ids.filter((id) => id !== c.id) : [...prev.class_ids, c.id] }))} />
+                    {c.name}
+                  </label>
+                ))}
+              </div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Subject</label>
-              <select className="input-field" value={form.subject_id} onChange={(e) => setForm({ ...form, subject_id: e.target.value })}>
-                <option value="">Any</option>
-                {asList(subjects).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              <label className="block text-sm font-medium mb-1">Subjects</label>
+              <div className="max-h-36 overflow-y-auto border rounded-lg p-2 space-y-1">
+                {asList(subjects).map((s: any) => (
+                  <label key={s.id} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={form.subject_ids.includes(s.id)} onChange={() => setForm((prev) => ({ ...prev, subject_ids: prev.subject_ids.includes(s.id) ? prev.subject_ids.filter((id) => id !== s.id) : [...prev.subject_ids, s.id] }))} />
+                    {s.name}
+                  </label>
+                ))}
+              </div>
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-1">Upload file</label>
@@ -202,7 +210,7 @@ export default function LessonPlansAdminPage() {
                 </td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={6} className="py-8 text-center text-gray-400">No lesson plans yet</td></tr>}
+            {!asList(data?.data || data).length && <tr><td colSpan={6} className="py-8 text-center text-gray-400">No lesson plans yet</td></tr>}
           </tbody>
         </table>
       </div>

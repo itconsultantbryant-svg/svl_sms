@@ -55,10 +55,18 @@ function recomputeTotals(db: ReturnType<typeof getDatabase>, gradebookId: string
 
 function getTeacherEmployeeId(req: AuthRequest): string | null {
   const db = getDatabase();
-  const inst = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
   const teacher = db.prepare(`
-    SELECT id FROM employees WHERE user_id = ? ${inst} AND is_teacher = 1
-  `).get(req.user!.id) as any;
+    SELECT id FROM employees
+    WHERE (is_active = 1 OR is_active IS NULL)
+      AND (institution_id = ? OR institution_id IS NULL)
+      AND (
+        user_id = ?
+        OR id = (SELECT linked_entity_id FROM users WHERE id = ? AND linked_entity_type = 'employee')
+      )
+  `).get(req.institution_id, req.user!.id, req.user!.id) as any;
+  if (teacher?.id && req.user?.id) {
+    db.prepare(`UPDATE employees SET user_id = ?, is_teacher = 1 WHERE id = ? AND (user_id IS NULL OR user_id = '')`).run(req.user.id, teacher.id);
+  }
   return teacher?.id || null;
 }
 
@@ -264,12 +272,14 @@ gradebookRouter.get('/:id', (req: AuthRequest, res: Response) => {
 // Admin generates gradebook for class/subject/teacher with weighted columns
 gradebookRouter.post('/generate', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   const {
-    session_id, term_id, class_id, section_id, subject_id, teacher_id, columns
+    session_id, term_id, class_id, section_id, subject_id, teacher_id, columns, class_ids, subject_ids
   } = req.body;
+  const classIds = (Array.isArray(class_ids) && class_ids.length ? class_ids : class_id ? [class_id] : []).filter(Boolean);
+  const subjectIds = (Array.isArray(subject_ids) && subject_ids.length ? subject_ids : subject_id ? [subject_id] : []).filter(Boolean);
 
-  if (!class_id || !subject_id || !teacher_id || !Array.isArray(columns) || columns.length === 0) {
+  if (!classIds.length || !subjectIds.length || !teacher_id || !Array.isArray(columns) || columns.length === 0) {
     res.status(400).json({
-      error: 'class_id, subject_id, teacher_id, and columns[] are required',
+      error: 'Select at least one class, one subject, a teacher, and columns[]',
     });
     return;
   }
@@ -281,72 +291,68 @@ gradebookRouter.post('/generate', authorize('platform_admin', 'institution_admin
   }
 
   const db = getDatabase();
+  const created: any[] = [];
+  const skipped: string[] = [];
 
-  // Verify teacher assignment exists (or allow admin override by creating if missing)
-  const assignment = db.prepare(`
-    SELECT id FROM teacher_assignments
-    WHERE employee_id = ? AND class_id = ? AND subject_id = ?
-      AND institution_id = ?
-      ${session_id ? 'AND session_id = ?' : ''}
-    LIMIT 1
-  `).get(
-    ...(session_id
-      ? [teacher_id, class_id, subject_id, req.institution_id, session_id]
-      : [teacher_id, class_id, subject_id, req.institution_id])
-  );
-
-  if (!assignment) {
-    db.prepare(`
-      INSERT INTO teacher_assignments (
-        id, institution_id, employee_id, class_id, section_id, subject_id, session_id, is_class_teacher
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-    `).run(
-      generateId(), req.institution_id, teacher_id, class_id, section_id || null, subject_id, session_id || null
-    );
-  }
-
-  const id = generateId();
   try {
-    const tx = db.transaction(() => {
-      db.prepare(`
-        INSERT INTO gradebooks (
-          id, institution_id, session_id, term_id, class_id, section_id, subject_id,
-          teacher_id, status, generated_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
-      `).run(
-        id, req.institution_id, session_id || null, term_id || null,
-        class_id, section_id || null, subject_id, teacher_id, req.user!.id || null
-      );
+    for (const cid of classIds) {
+      for (const sid of subjectIds) {
+        const assignment = db.prepare(`
+          SELECT id FROM teacher_assignments
+          WHERE employee_id = ? AND class_id = ? AND subject_id = ? AND institution_id = ?
+            ${session_id ? 'AND session_id = ?' : ''}
+          LIMIT 1
+        `).get(...(session_id
+          ? [teacher_id, cid, sid, req.institution_id, session_id]
+          : [teacher_id, cid, sid, req.institution_id]));
 
-      const insertCol = db.prepare(`
-        INSERT INTO gradebook_columns (id, gradebook_id, name, weight, max_score, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-      columns.forEach((col: any, index: number) => {
-        insertCol.run(
-          generateId(),
-          id,
-          col.name || `Column ${index + 1}`,
-          Number(col.weight),
-          Number(col.max_score ?? 100),
-          col.sort_order ?? index
-        );
-      });
-    });
-    tx();
-  } catch (e: any) {
-    const message = String(e.message || '');
-    if (message.includes('UNIQUE')) {
-      res.status(409).json({ error: 'A gradebook already exists for this class/subject/teacher/term' });
-      return;
+        if (!assignment) {
+          db.prepare(`
+            INSERT INTO teacher_assignments (
+              id, institution_id, employee_id, class_id, section_id, subject_id, session_id, is_class_teacher
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+          `).run(generateId(), req.institution_id, teacher_id, cid, section_id || null, sid, session_id || null);
+        }
+
+        const id = generateId();
+        try {
+          db.prepare(`
+            INSERT INTO gradebooks (
+              id, institution_id, session_id, term_id, class_id, section_id, subject_id,
+              teacher_id, status, generated_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+          `).run(
+            id, req.institution_id, session_id || null, term_id || null,
+            cid, section_id || null, sid, teacher_id, req.user!.id || null
+          );
+          const insertCol = db.prepare(`
+            INSERT INTO gradebook_columns (id, gradebook_id, name, weight, max_score, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `);
+          columns.forEach((col: any, index: number) => {
+            insertCol.run(generateId(), id, col.name || `Column ${index + 1}`, Number(col.weight), Number(col.max_score ?? 100), col.sort_order ?? index);
+          });
+          created.push(loadGradebookDetail(db, id, req.institution_id));
+        } catch (e: any) {
+          if (String(e.message || '').includes('UNIQUE')) {
+            skipped.push(`${cid}:${sid}`);
+            continue;
+          }
+          throw e;
+        }
+      }
     }
+  } catch (e: any) {
     console.error('Gradebook generate error:', e);
-    res.status(500).json({ error: 'Failed to generate gradebook', details: message });
+    res.status(500).json({ error: 'Failed to generate gradebook', details: e.message });
     return;
   }
 
-  const detail = loadGradebookDetail(db, id, req.institution_id);
-  res.status(201).json(detail);
+  if (!created.length) {
+    res.status(409).json({ error: 'A gradebook already exists for the selected class, subject, and teacher' });
+    return;
+  }
+  res.status(201).json({ created, skipped, id: created[0]?.id, count: created.length });
 });
 
 gradebookRouter.put('/:id/columns', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {

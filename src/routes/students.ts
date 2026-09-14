@@ -116,7 +116,13 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
 
   const db = getDatabase();
   const id = generateId();
-  const admission_number = generateAdmissionNumber();
+  let admission_number = generateAdmissionNumber();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const taken = db.prepare('SELECT id FROM students WHERE admission_number = ?').get(admission_number)
+      || db.prepare('SELECT id FROM users WHERE username = ?').get(admission_number);
+    if (!taken) break;
+    admission_number = generateAdmissionNumber();
+  }
   const temporary_password = generateDefaultPassword();
   const userId = generateId();
   let parentCredentials: { username: string; temporary_password: string } | null = null;
@@ -163,7 +169,9 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
     const studentRoleId = ensurePortalRole(req.institution_id, 'student', 'Student');
 
     const passwordHash = bcrypt.hashSync(temporary_password, 10);
-    const loginEmail = emptyToNull(email) || `${admission_number.toLowerCase()}@student.local`;
+    let loginEmail = emptyToNull(email) || `${admission_number.toLowerCase()}@student.local`;
+    const emailTaken = db.prepare('SELECT id FROM users WHERE email = ?').get(loginEmail);
+    if (emailTaken) loginEmail = `${admission_number.toLowerCase()}@student.local`;
     db.prepare(`
       INSERT INTO users (
         id, institution_id, branch_id, username, email, password_hash,
@@ -206,11 +214,10 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
         relationship,
         emptyToNull(parent.phone),
         emptyToNull(parent.email),
-        parent.address || null,
+        emptyToNull(parent.address),
         parent.occupation || null
       );
       db.prepare('INSERT INTO student_parents (student_id, parent_id, is_primary) VALUES (?, ?, 1)').run(id, parentId);
-      db.prepare('UPDATE parents SET user_id = ? WHERE id = ?').run(parentUserId, parentId);
 
       let parentRoleId = ensurePortalRole(req.institution_id, 'parent', 'Parent');
 
@@ -220,6 +227,9 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
       let finalParentUsername = parentUsername || `parent${Date.now()}`;
       const existingParentUser = db.prepare('SELECT id FROM users WHERE username = ?').get(finalParentUsername);
       if (existingParentUser) finalParentUsername = `${finalParentUsername}${Math.floor(Math.random() * 1000)}`;
+      let parentLoginEmail = emptyToNull(parent.email) || `${finalParentUsername}@parent.local`;
+      const parentEmailTaken = db.prepare('SELECT id FROM users WHERE email = ?').get(parentLoginEmail);
+      if (parentEmailTaken) parentLoginEmail = `${finalParentUsername}@parent.local`;
 
       db.prepare(`
         INSERT INTO users (
@@ -232,15 +242,16 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
         req.institution_id,
         emptyToNull(branch_id) || emptyToNull(req.user?.branch_id),
         finalParentUsername,
-        parent.email || `${finalParentUsername}@parent.local`,
+        parentLoginEmail,
         bcrypt.hashSync(parentPassword, 10),
         parent.first_name,
         parent.last_name,
-        parent.phone || null,
+        emptyToNull(parent.phone),
         parentRoleId,
         parentId
       );
       ensureUserRole(parentUserId, parentRoleId, true);
+      db.prepare('UPDATE parents SET user_id = ? WHERE id = ?').run(parentUserId, parentId);
 
       db.prepare(`
         INSERT INTO parent_students (id, institution_id, parent_id, student_id, relationship, is_primary)

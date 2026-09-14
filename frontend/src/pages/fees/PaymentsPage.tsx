@@ -43,6 +43,10 @@ export default function PaymentsPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-finance'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-fee-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       toast.success('Payment recorded');
       setReceiptId(res.data.id);
       setShowForm(false);

@@ -52,11 +52,11 @@ feesRouter.use(requireTenant);
 // Fee Types
 feesRouter.get('/types', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  const types = db.prepare('SELECT * FROM fee_types WHERE institution_id = ? AND is_active = 1 ORDER BY name').all(req.institution_id);
+  const types = db.prepare('SELECT * FROM fee_types WHERE institution_id = ? AND (is_active = 1 OR is_active IS NULL) ORDER BY name').all(req.institution_id);
   res.json(types);
 });
 
-feesRouter.post('/types', authorize('platform_admin', 'institution_admin', 'accountant'), (req: AuthRequest, res: Response) => {
+feesRouter.post('/types', authorize('platform_admin', 'institution_admin', 'accountant', 'finance_officer', 'finance'), (req: AuthRequest, res: Response) => {
   const { name, code, description, is_recurring } = req.body;
   if (!name) { res.status(400).json({ error: 'Name is required' }); return; }
   const db = getDatabase();
@@ -65,7 +65,7 @@ feesRouter.post('/types', authorize('platform_admin', 'institution_admin', 'acco
   res.status(201).json({ id, message: 'Fee type created successfully' });
 });
 
-feesRouter.put('/types/:id', authorize('platform_admin', 'institution_admin', 'accountant'), (req: AuthRequest, res: Response) => {
+feesRouter.put('/types/:id', authorize('platform_admin', 'institution_admin', 'accountant', 'finance_officer', 'finance'), (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const { name, code, description, is_recurring, is_active } = req.body;
   const db = getDatabase();
@@ -98,7 +98,7 @@ feesRouter.get('/structures', (req: AuthRequest, res: Response) => {
   res.json(structures);
 });
 
-feesRouter.post('/structures', authorize('platform_admin', 'institution_admin', 'accountant'), (req: AuthRequest, res: Response) => {
+feesRouter.post('/structures', authorize('platform_admin', 'institution_admin', 'accountant', 'finance_officer', 'finance'), (req: AuthRequest, res: Response) => {
   const { fee_type_id, session_id, term_id, branch_id, class_id, amount, due_date } = req.body;
   if (!fee_type_id || !session_id || !class_id || !amount) {
     res.status(400).json({ error: 'Fee type, session, class, and amount are required' });
@@ -110,7 +110,7 @@ feesRouter.post('/structures', authorize('platform_admin', 'institution_admin', 
   res.status(201).json({ id, message: 'Fee structure created successfully' });
 });
 
-feesRouter.put('/structures/:id', authorize('platform_admin', 'institution_admin', 'accountant'), (req: AuthRequest, res: Response) => {
+feesRouter.put('/structures/:id', authorize('platform_admin', 'institution_admin', 'accountant', 'finance_officer', 'finance'), (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const { amount, due_date, is_active } = req.body;
   const db = getDatabase();
@@ -125,7 +125,7 @@ feesRouter.get('/discounts', (req: AuthRequest, res: Response) => {
   res.json(discounts);
 });
 
-feesRouter.post('/discounts', authorize('platform_admin', 'institution_admin', 'accountant'), (req: AuthRequest, res: Response) => {
+feesRouter.post('/discounts', authorize('platform_admin', 'institution_admin', 'accountant', 'finance_officer', 'finance'), (req: AuthRequest, res: Response) => {
   const { name, type, value, description } = req.body;
   if (!name || !value) { res.status(400).json({ error: 'Name and value are required' }); return; }
   const db = getDatabase();
@@ -198,7 +198,7 @@ feesRouter.get('/invoices/:id', (req: AuthRequest, res: Response) => {
   res.json({ ...invoice, items, payments });
 });
 
-feesRouter.post('/invoices/generate', authorize('platform_admin', 'institution_admin', 'accountant'), (req: AuthRequest, res: Response) => {
+feesRouter.post('/invoices/generate', authorize('platform_admin', 'institution_admin', 'accountant', 'finance_officer', 'finance'), (req: AuthRequest, res: Response) => {
   try {
     const { student_id, session_id, term_id, due_date } = req.body;
     if (!student_id || !session_id) {

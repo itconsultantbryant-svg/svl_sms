@@ -22,7 +22,9 @@ export default function DashboardPage() {
   const { data: financeData } = useQuery({
     queryKey: ['dashboard-finance'],
     queryFn: () => api.get('/dashboard/finance-summary').then(r => r.data).catch(() => null),
-    refetchInterval: 30000,
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   const { data: genderStats } = useQuery({

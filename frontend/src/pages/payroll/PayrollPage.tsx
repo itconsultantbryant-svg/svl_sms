@@ -148,8 +148,12 @@ function PayslipView({ id, onBack }: { id: string; onBack: () => void }) {
       <button onClick={onBack} className="btn-secondary text-sm">Back</button>
       <div className="card max-w-2xl mx-auto print:shadow-none" id="payslip">
         <div className="text-center border-b pb-4 mb-4">
-          <h2 className="text-xl font-bold">{institution?.name || 'SVL Academy'}</h2>
-          <p className="text-sm text-gray-500">{institution?.address}</p>
+          {institution?.logo ? (
+            <img src={institution.logo} alt="" className="h-16 mx-auto mb-2 object-contain" />
+          ) : null}
+          <h2 className="text-xl font-bold">{institution?.institution_name || institution?.name || 'School'}</h2>
+          {institution?.motto ? <p className="text-sm text-gray-500 italic">{institution.motto}</p> : null}
+          <p className="text-sm text-gray-500">{[institution?.address, institution?.city, institution?.county].filter(Boolean).join(', ')}</p>
           <p className="mt-2 font-semibold text-primary-600">PAYSLIP - {months[(payslip.month - 1)]} {payslip.year}</p>
         </div>
 

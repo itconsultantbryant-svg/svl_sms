@@ -30,6 +30,7 @@ const TENANT_TABLES = [
   'visitors', 'phone_calls', 'postal_records',
   'timetable_periods', 'timetable_entries',
   'expense_categories', 'income_categories', 'expenses', 'income',
+  'academic_sessions', 'terms', 'classes', 'subjects', 'parents',
 ];
 
 function ensureTenantColumns(database: Database.Database): void {

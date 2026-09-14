@@ -13,10 +13,19 @@ academicsRouter.use(requireTenant);
 // Academic Sessions
 academicsRouter.get('/sessions', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
-  // TENANT ISOLATION: Filter by institution_id
-  const institutionFilter = req.institution_id ? `institution_id = '${req.institution_id}'` : '1=1';
-  const sessions = db.prepare(`SELECT * FROM academic_sessions WHERE ${institutionFilter} ORDER BY start_date DESC`).all();
-  res.json(sessions);
+  try {
+    if (req.institution_id) {
+      db.prepare('UPDATE academic_sessions SET institution_id = ? WHERE institution_id IS NULL').run(req.institution_id);
+      const sessions = db.prepare('SELECT * FROM academic_sessions WHERE institution_id = ? ORDER BY is_current DESC, start_date DESC').all(req.institution_id);
+      res.json(sessions);
+      return;
+    }
+    const sessions = db.prepare('SELECT * FROM academic_sessions ORDER BY start_date DESC').all();
+    res.json(sessions);
+  } catch (err: any) {
+    console.error('Sessions list error:', err);
+    res.status(500).json({ error: 'Failed to load sessions', details: err.message });
+  }
 });
 
 academicsRouter.post('/sessions', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
@@ -109,11 +118,10 @@ academicsRouter.get('/classes', (req: AuthRequest, res: Response) => {
   const { branch_id } = req.query as any;
   // TENANT ISOLATION: Filter by institution_id
   const institutionFilter = req.institution_id ? `c.institution_id = '${req.institution_id}'` : '1=1';
-  let where = `WHERE ${institutionFilter} AND c.is_active = 1`;
+  let where = `WHERE ${institutionFilter} AND (c.is_active = 1 OR c.is_active IS NULL)`;
   const params: any[] = [];
 
   if (branch_id) { where += ' AND c.branch_id = ?'; params.push(branch_id); }
-  if (req.user?.branch_id) { where += ' AND c.branch_id = ?'; params.push(req.user.branch_id); }
 
   const classes = db.prepare(`
     SELECT c.*, b.branch_name as branch_name,
@@ -233,7 +241,7 @@ academicsRouter.get('/subjects', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
   const { branch_id } = req.query as any;
   const institutionFilter = req.institution_id ? `s.institution_id = '${req.institution_id}'` : '1=1';
-  let where = `WHERE ${institutionFilter} AND s.is_active = 1`;
+  let where = `WHERE ${institutionFilter} AND (s.is_active = 1 OR s.is_active IS NULL)`;
   const params: any[] = [];
 
   if (branch_id) { where += ' AND s.branch_id = ?'; params.push(branch_id); }

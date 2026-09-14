@@ -26,7 +26,13 @@ export default function ReportsPage() {
 }
 
 function OverviewTab() {
-  const { data: stats } = useQuery<any>({ queryKey: ['dashboard-stats'], queryFn: () => api.get('/reports/stats').then(r => r.data) });
+  const { data: stats } = useQuery<any>({
+    queryKey: ['dashboard-stats'],
+    queryFn: () => api.get('/reports/stats').then(r => r.data),
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
 
   if (!stats) return <div className="text-center py-12 text-gray-400">Loading...</div>;
 

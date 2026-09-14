@@ -323,7 +323,11 @@ payrollRouter.get('/payslips/:id', (req: AuthRequest, res: Response) => {
   if (!payslip) { res.status(404).json({ error: 'Payslip not found' }); return; }
 
   const items = db.prepare('SELECT * FROM payslip_items WHERE payslip_id = ? ORDER BY type, sort_order').all(id);
-  const institution = db.prepare('SELECT * FROM institutions LIMIT 1').get();
+  const institution = db.prepare(`
+    SELECT i.* FROM institutions i
+    WHERE i.id = COALESCE(?, ?)
+  `).get(payslip.institution_id, req.institution_id)
+    || db.prepare('SELECT * FROM institutions WHERE id = ?').get(req.institution_id);
   res.json({ payslip, items, institution });
 });
 

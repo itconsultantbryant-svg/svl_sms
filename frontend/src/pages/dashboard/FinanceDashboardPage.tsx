@@ -1,28 +1,16 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { DollarSign, Receipt, Wallet, TrendingUp, AlertCircle, ArrowRight } from 'lucide-react';
 import api from '../../utils/api';
 
 export default function FinanceDashboardPage() {
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  const load = async () => {
-    try {
-      const res = await api.get('/dashboard/finance');
-      setStats(res.data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 30000);
-    return () => clearInterval(id);
-  }, []);
+  const { data: stats, isLoading: loading, isError, refetch } = useQuery({
+    queryKey: ['finance-dashboard'],
+    queryFn: () => api.get('/dashboard/finance').then((r) => r.data),
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
 
   if (loading) {
     return (
@@ -52,10 +40,15 @@ export default function FinanceDashboardPage() {
           <p className="text-sm text-gray-500">Live fees, collections, and accounts overview</p>
         </div>
         <div className="flex gap-2">
+          <button type="button" className="btn-secondary text-sm" onClick={() => refetch()}>Refresh</button>
           <Link to="/fees/payments" className="btn-primary text-sm">Record Payment</Link>
           <Link to="/fees/invoices" className="btn-secondary text-sm">Invoices</Link>
+          <Link to="/accounts" className="btn-secondary text-sm">Accounts</Link>
+          <Link to="/payroll" className="btn-secondary text-sm">Payroll</Link>
         </div>
       </div>
+
+      {isError && <p className="text-sm text-red-600">Finance figures could not be loaded. Refresh and try again.</p>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards.map((c) => (

@@ -135,8 +135,8 @@ function buildNavigation(homePath: string): MenuItem[] {
     {
       name: 'Academics',
       icon: BookOpen,
-      userTypes: ['platform_admin', 'institution_admin', 'teacher', 'staff'],
-      excludeRoleCodes: ['accountant', 'finance_officer', 'finance', 'registrar', 'admission_officer'],
+      userTypes: ['platform_admin', 'institution_admin', 'staff'],
+      excludeRoleCodes: ['accountant', 'finance_officer', 'finance', 'registrar', 'admission_officer', 'teacher'],
       children: [
         { name: 'Sessions', href: '/academics/sessions' },
         { name: 'Classes', href: '/academics/classes' },
@@ -334,6 +334,15 @@ export default function DynamicSidebar({ open, onClose }: SidebarProps) {
     const typeMatch = !item.userTypes?.length || item.userTypes.some((t) => effectiveUserTypes.has(t));
     const roleMatch = !!item.roleCodes?.length && item.roleCodes.some((c) => mergedCodes.includes(c));
     const permGranted = !!item.permission && hasPermission(item.permission);
+
+    const isAdmin = effectiveUserTypes.has('institution_admin') || effectiveUserTypes.has('platform_admin');
+    const isTeacherOnly = effectiveUserTypes.has('teacher') && !isAdmin;
+    if (isTeacherOnly && (item.name === 'Academics' || item.href === '/gradebook' || item.href === '/lesson-plans')) {
+      return false;
+    }
+    if (isAdmin && (item.href === '/teacher/gradebook' || item.href === '/teacher/lesson-plans')) {
+      return false;
+    }
 
     if (item.excludeRoleCodes?.some((c) => mergedCodes.includes(c)) && !permGranted && !roleMatch) {
       return false;

@@ -149,7 +149,7 @@ accountsRouter.get('/report', (req: AuthRequest, res: Response) => {
   const totalIncome = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM income WHERE institution_id = ? ${dateFilter} ${branchFilter}`).get(...params, ...branchParams) as any;
   const totalExpenses = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE institution_id = ? ${dateFilter} ${branchFilter}`).get(...params, ...branchParams) as any;
 
-  const feeCollections = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE institution_id = ? AND status = 'completed' ${dateFilter.replace(/date/g, 'payment_date')}`).get(req.institution_id, ...params.slice(1)) as any;
+  const feeCollections = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE institution_id = ? AND (status = 'completed' OR status IS NULL) ${dateFilter.replace(/date/g, 'payment_date')}`).get(req.institution_id, ...params.slice(1)) as any;
 
   const incomeByCategory = db.prepare(`
     SELECT ic.name as category, COALESCE(SUM(i.amount), 0) as total

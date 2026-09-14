@@ -36,6 +36,27 @@ export default function TeacherFormPage() {
     queryKey: ['designations'],
     queryFn: () => api.get('/academics/designations').then(r => r.data),
   });
+  const { data: classes } = useQuery<any[]>({
+    queryKey: ['classes'],
+    queryFn: () => api.get('/academics/classes').then(r => r.data),
+    enabled: isEdit,
+  });
+  const { data: subjects } = useQuery<any[]>({
+    queryKey: ['subjects'],
+    queryFn: () => api.get('/academics/subjects').then(r => r.data),
+    enabled: isEdit,
+  });
+  const { data: sessions } = useQuery<any[]>({
+    queryKey: ['sessions'],
+    queryFn: () => api.get('/academics/sessions').then(r => r.data),
+    enabled: isEdit,
+  });
+  const { data: teacherRecord, refetch: refetchTeacher } = useQuery<any>({
+    queryKey: ['teacher', id],
+    queryFn: () => api.get(`/teachers/${id}`).then(r => r.data),
+    enabled: isEdit,
+  });
+  const [assignForm, setAssignForm] = useState({ class_ids: [] as string[], subject_ids: [] as string[], session_id: '' });
 
   useEffect(() => {
     if (id) {
@@ -231,6 +252,68 @@ export default function TeacherFormPage() {
             </div>
           </div>
         </div>
+
+        {isEdit && (
+          <div className="card space-y-3">
+            <h2 className="text-lg font-semibold text-gray-900">Assigned classes and subjects</h2>
+            <p className="text-sm text-gray-500">A teacher can be assigned to more than one class and subject.</p>
+            {(teacherRecord?.assignments || []).length ? (
+              <ul className="text-sm space-y-1">
+                {teacherRecord.assignments.map((a: any) => (
+                  <li key={a.id} className="flex justify-between border-b py-1">
+                    <span>{a.class_name} · {a.subject_name}{a.session_name ? ` · ${a.session_name}` : ''}</span>
+                    <button type="button" className="text-red-600 text-xs" onClick={async () => {
+                      await api.delete(`/teachers/${id}/assignments/${a.id}`);
+                      toast.success('Assignment removed');
+                      refetchTeacher();
+                    }}>Remove</button>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-sm text-gray-400">No classes or subjects assigned yet.</p>}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">Classes</label>
+                <div className="max-h-36 overflow-y-auto border rounded-lg p-2 space-y-1">
+                  {(Array.isArray(classes) ? classes : []).map((c: any) => (
+                    <label key={c.id} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={assignForm.class_ids.includes(c.id)} onChange={() => setAssignForm((f) => ({ ...f, class_ids: f.class_ids.includes(c.id) ? f.class_ids.filter((x) => x !== c.id) : [...f.class_ids, c.id] }))} />
+                      {c.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Subjects</label>
+                <div className="max-h-36 overflow-y-auto border rounded-lg p-2 space-y-1">
+                  {(Array.isArray(subjects) ? subjects : []).map((s: any) => (
+                    <label key={s.id} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={assignForm.subject_ids.includes(s.id)} onChange={() => setAssignForm((f) => ({ ...f, subject_ids: f.subject_ids.includes(s.id) ? f.subject_ids.filter((x) => x !== s.id) : [...f.subject_ids, s.id] }))} />
+                      {s.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Session</label>
+                <select className="input-field" value={assignForm.session_id} onChange={(e) => setAssignForm((f) => ({ ...f, session_id: e.target.value }))}>
+                  <option value="">Current session</option>
+                  {(Array.isArray(sessions) ? sessions : []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <button type="button" className="btn-primary mt-3" onClick={async () => {
+                  try {
+                    const res = await api.post(`/teachers/${id}/assignments`, assignForm);
+                    toast.success(res.data.message || 'Assigned');
+                    setAssignForm({ class_ids: [], subject_ids: [], session_id: '' });
+                    refetchTeacher();
+                  } catch (err: any) {
+                    toast.error(err.response?.data?.error || 'Failed to assign');
+                  }
+                }}>Assign selected</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-end gap-3">
           <button type="button" onClick={() => navigate('/teachers')} className="btn-secondary">Cancel</button>

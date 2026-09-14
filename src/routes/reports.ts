@@ -71,7 +71,7 @@ reportsRouter.get('/stats', (req: AuthRequest, res: Response) => {
           (db
             .prepare(
               `SELECT COALESCE(SUM(amount), 0) as v FROM payments
-               WHERE institution_id = ? AND status = 'completed'
+               WHERE institution_id = ? AND (status = 'completed' OR status IS NULL)
                  AND strftime('%Y-%m', payment_date) = strftime('%Y-%m', 'now')`
             )
             .get(iid) as any)?.v,

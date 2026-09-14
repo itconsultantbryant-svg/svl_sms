@@ -53,6 +53,9 @@ function OverviewTab({ dateRange }: { dateRange: any }) {
   const { data: report } = useQuery<any>({
     queryKey: ['financial-report', dateRange],
     queryFn: () => api.get('/accounts/report', { params: dateRange }).then(r => r.data),
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   if (!report) return <div className="text-center py-8 text-gray-400">Loading...</div>;
@@ -142,7 +145,7 @@ function IncomeTab({ dateRange, showForm, setShowForm }: { dateRange: any; showF
 
   const addMutation = useMutation({
     mutationFn: (data: any) => api.post('/accounts/income', data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['income'] }); toast.success('Income recorded'); setShowForm(false); setForm({ category_id: '', amount: '', date: '', description: '', payment_method: 'cash', reference: '' }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['income'] }); queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] }); queryClient.invalidateQueries({ queryKey: ['dashboard-finance'] }); queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }); queryClient.invalidateQueries({ queryKey: ['financial-report'] }); toast.success('Income recorded'); setShowForm(false); setForm({ category_id: '', amount: '', date: '', description: '', payment_method: 'cash', reference: '' }); },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed'),
   });
 
@@ -252,7 +255,7 @@ function ExpensesTab({ dateRange, showForm, setShowForm }: { dateRange: any; sho
 
   const addMutation = useMutation({
     mutationFn: (data: any) => api.post('/accounts/expenses', data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['expenses'] }); toast.success('Expense recorded'); setShowForm(false); setForm({ category_id: '', amount: '', date: '', description: '', vendor: '', payment_method: 'cash', reference: '' }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['expenses'] }); queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] }); queryClient.invalidateQueries({ queryKey: ['dashboard-finance'] }); queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }); queryClient.invalidateQueries({ queryKey: ['financial-report'] }); toast.success('Expense recorded'); setShowForm(false); setForm({ category_id: '', amount: '', date: '', description: '', vendor: '', payment_method: 'cash', reference: '' }); },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed'),
   });
 

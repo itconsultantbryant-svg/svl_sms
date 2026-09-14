@@ -21,8 +21,17 @@ function getTeacherEmployee(req: AuthRequest, res: Response, next: any) {
   const employee = db.prepare(`
     SELECT id, employee_id, first_name, last_name, email, phone, department_id, branch_id
     FROM employees
-    WHERE user_id = ? AND institution_id = ? AND is_teacher = 1 AND is_active = 1
-  `).get(req.user.id, req.institution_id) as any;
+    WHERE institution_id = ?
+      AND (is_active = 1 OR is_active IS NULL)
+      AND (
+        user_id = ?
+        OR id = (SELECT linked_entity_id FROM users WHERE id = ? AND linked_entity_type = 'employee')
+      )
+  `).get(req.institution_id, req.user.id, req.user.id) as any;
+
+  if (employee && req.user?.id) {
+    db.prepare(`UPDATE employees SET user_id = ?, is_teacher = 1 WHERE id = ? AND (user_id IS NULL OR user_id = '')`).run(req.user.id, employee.id);
+  }
 
   if (!employee) {
     res.status(404).json({ error: 'Teacher employee record not found' });
@@ -56,7 +65,7 @@ teacherDashboardRouter.get('/overview', (req: AuthRequest, res: Response) => {
 
   // Count assigned classes
   const classCount = db.prepare(`
-    SELECT COUNT(DISTINCT CONCAT(class_id, '-', COALESCE(section_id, ''))) as count
+    SELECT COUNT(DISTINCT class_id || '-' || COALESCE(section_id, '')) as count
     FROM teacher_assignments
     WHERE employee_id = ? AND institution_id = ? AND session_id = ?
   `).get(teacherId, req.institution_id, currentSession.id) as any;
@@ -121,12 +130,10 @@ teacherDashboardRouter.get('/my-classes', (req: AuthRequest, res: Response) => {
   const teacherId = (req as any).teacherEmployee.id;
   const { session_id } = req.query;
 
-  // Get current or specified session
-  let sessionFilter = 'sess.is_current = 1';
   const params: any[] = [teacherId, req.institution_id];
-
+  let sessionFilter = '';
   if (session_id) {
-    sessionFilter = 'sess.id = ?';
+    sessionFilter = ' AND ta.session_id = ?';
     params.push(session_id);
   }
 
@@ -143,13 +150,13 @@ teacherDashboardRouter.get('/my-classes', (req: AuthRequest, res: Response) => {
       sub.code as subject_code,
       sess.id as session_id,
       sess.name as session_name,
-      (SELECT COUNT(*) FROM students WHERE class_id = c.id AND (section_id IS NULL OR section_id = sec.id) AND is_active = 1) as student_count
+      (SELECT COUNT(*) FROM students WHERE class_id = c.id AND (section_id IS NULL OR section_id = sec.id OR sec.id IS NULL) AND (is_active = 1 OR status = 'active' OR status IS NULL)) as student_count
     FROM teacher_assignments ta
     INNER JOIN classes c ON ta.class_id = c.id
     LEFT JOIN sections sec ON ta.section_id = sec.id
-    INNER JOIN subjects sub ON ta.subject_id = sub.id
-    INNER JOIN academic_sessions sess ON ta.session_id = sess.id
-    WHERE ta.employee_id = ? AND ta.institution_id = ? AND ${sessionFilter}
+    LEFT JOIN subjects sub ON ta.subject_id = sub.id
+    LEFT JOIN academic_sessions sess ON ta.session_id = sess.id
+    WHERE ta.employee_id = ? AND ta.institution_id = ? ${sessionFilter}
     ORDER BY c.name, sec.name, sub.name
   `).all(...params);
 
@@ -180,14 +187,14 @@ teacherDashboardRouter.get('/my-students', (req: AuthRequest, res: Response) => 
     SELECT id FROM teacher_assignments
     WHERE employee_id = ? AND institution_id = ? AND class_id = ?
     ${section_id ? 'AND section_id = ?' : ''}
-  `).get(section_id ? [teacherId, req.institution_id, class_id, section_id] : [teacherId, req.institution_id, class_id]);
+  `).get(...(section_id ? [teacherId, req.institution_id, class_id, section_id] : [teacherId, req.institution_id, class_id]));
 
   if (!assignment) {
     res.status(403).json({ error: 'You are not assigned to this class' });
     return;
   }
 
-  let where = 'WHERE s.institution_id = ? AND s.class_id = ? AND s.is_active = 1 ' + searchClause;
+  let where = `WHERE s.institution_id = ? AND s.class_id = ? AND (s.is_active = 1 OR s.status = 'active' OR s.status IS NULL) ` + searchClause;
   const params: any[] = [req.institution_id, class_id, ...searchParams];
 
   if (section_id) {

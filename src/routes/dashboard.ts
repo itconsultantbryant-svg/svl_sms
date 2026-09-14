@@ -111,7 +111,7 @@ dashboardRouter.get('/fee-summary', (req: AuthRequest, res: Response) => {
 
         const collectedRow = db.prepare(`
           SELECT COALESCE(SUM(amount), 0) as collected FROM payments
-          WHERE institution_id = ? AND status = 'completed' AND payment_date >= ? AND payment_date < ?
+          WHERE institution_id = ? AND (status = 'completed' OR status IS NULL) AND payment_date >= ? AND payment_date < ?
         `).get(iid, startDate, endDate) as any;
         collected = collectedRow?.collected || 0;
       } catch (e) {}
@@ -138,7 +138,7 @@ dashboardRouter.get('/finance-summary', (req: AuthRequest, res: Response) => {
   try {
     const feeRow = db.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total FROM payments
-      WHERE institution_id = ? AND status = 'completed' AND payment_date >= ? AND payment_date < ?
+      WHERE institution_id = ? AND (status = 'completed' OR status IS NULL) AND payment_date >= ? AND payment_date < ?
     `).get(iid, startDate, endDate) as any;
     const otherRow = db.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total FROM income
@@ -207,12 +207,15 @@ dashboardRouter.get('/finance', (req: AuthRequest, res: Response) => {
   };
 
   const totalInvoiced = safe(() => (db.prepare(`SELECT COALESCE(SUM(total_amount),0) as v FROM invoices WHERE institution_id = ?`).get(iid) as any).v);
-  const totalCollected = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE institution_id = ? AND status = 'completed'`).get(iid) as any).v);
+  const collectedAll = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE institution_id = ? AND (status = 'completed' OR status IS NULL)`).get(iid) as any).v);
+  const totalCollected = Number(collectedAll);
   const outstanding = Math.max(0, Number(totalInvoiced) - Number(totalCollected));
   const unpaidInvoices = safe(() => (db.prepare(`SELECT COUNT(*) as v FROM invoices WHERE institution_id = ? AND status IN ('unpaid','partial','overdue')`).get(iid) as any).v);
-  const paymentsToday = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE institution_id = ? AND status = 'completed' AND DATE(payment_date) = DATE('now')`).get(iid) as any).v);
+  const paymentsToday = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE institution_id = ? AND (status = 'completed' OR status IS NULL) AND DATE(payment_date) = DATE('now')`).get(iid) as any).v);
   const expenseMonth = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM expenses WHERE institution_id = ? AND strftime('%Y-%m', date) = strftime('%Y-%m','now')`).get(iid) as any).v);
-  const incomeMonth = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE institution_id = ? AND status = 'completed' AND strftime('%Y-%m', payment_date) = strftime('%Y-%m','now')`).get(iid) as any).v);
+  const feeIncomeMonth = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE institution_id = ? AND (status = 'completed' OR status IS NULL) AND strftime('%Y-%m', payment_date) = strftime('%Y-%m','now')`).get(iid) as any).v);
+  const otherIncomeMonth = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM income WHERE institution_id = ? AND strftime('%Y-%m', date) = strftime('%Y-%m','now')`).get(iid) as any).v);
+  const incomeMonth = Number(feeIncomeMonth) + Number(otherIncomeMonth);
 
   const recentPayments = safe(() => db.prepare(`
     SELECT p.id, p.amount as amount_paid, p.payment_date, p.payment_method,
@@ -274,7 +277,7 @@ dashboardRouter.get('/teacher', (req: AuthRequest, res: Response) => {
     my_students: safe(() => (db.prepare(`
       SELECT COUNT(DISTINCT s.id) as v FROM students s
       JOIN teacher_assignments ta ON ta.class_id = s.class_id
-      WHERE ta.employee_id = ? AND s.institution_id = ? AND s.status = 'active'
+      WHERE ta.employee_id = ? AND s.institution_id = ? AND (s.status = 'active' OR s.status IS NULL OR s.is_active = 1)
     `).get(empId, iid) as any)?.v || 0),
     pending_assignments: safe(() => (db.prepare(`
       SELECT COUNT(*) as v FROM assignments
