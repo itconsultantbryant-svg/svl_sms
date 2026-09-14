@@ -5,6 +5,7 @@ import { Plus, Search, Edit2 } from 'lucide-react';
 import api from '../../utils/api';
 import { PaginatedResponse, Employee } from '../../types';
 import RecordView from '../../components/common/RecordView';
+import RecordActions from '../../components/common/RecordActions';
 
 export default function TeachersPage({ staff = false }: { staff?: boolean }) {
   const [page, setPage] = useState(1);
@@ -92,11 +93,10 @@ export default function TeachersPage({ staff = false }: { staff?: boolean }) {
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-3">
                         <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(teacher.id)}>View</button>
-                        {!staff && (
-                          <Link to={`/teachers/${teacher.id}/edit`} className="text-gray-400 hover:text-primary-600">
-                            <Edit2 size={15} />
-                          </Link>
-                        )}
+                        <RecordActions resource={staff ? 'staff' : 'teachers'} id={teacher.id} label={`${teacher.first_name} ${teacher.last_name}`} invalidate={['teachers']} />
+                        <Link to={`/teachers/${teacher.id}/edit`} className="text-gray-400 hover:text-primary-600">
+                          <Edit2 size={15} />
+                        </Link>
                       </div>
                     </td>
                   </tr>

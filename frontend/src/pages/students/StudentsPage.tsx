@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Plus, Search, Edit2 } from 'lucide-react';
 import api from '../../utils/api';
 import RecordView from '../../components/common/RecordView';
+import RecordActions from '../../components/common/RecordActions';
 import { PaginatedResponse, Student, Class, Branch } from '../../types';
 
 export default function StudentsPage() {
@@ -132,6 +133,7 @@ export default function StudentsPage() {
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-3">
                         <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(student.id)}>View</button>
+                        <RecordActions resource="students" id={student.id} label={`${student.first_name} ${student.last_name}`} invalidate={['students']} />
                         <Link to={`/students/${student.id}/edit`} className="text-gray-400 hover:text-primary-600">
                           <Edit2 size={15} />
                         </Link>

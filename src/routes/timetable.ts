@@ -3,6 +3,7 @@ import { getDatabase } from '../database/init';
 import { AuthRequest, authorize } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId } from '../utils/helpers';
+import { deleteSchoolRecord } from '../utils/purgeRecords';
 
 export const timetableRouter = Router();
 
@@ -67,10 +68,16 @@ timetableRouter.put('/periods/:id', authorize('platform_admin', 'institution_adm
 });
 
 timetableRouter.delete('/periods/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
-  const db = getDatabase();
-  db.prepare('DELETE FROM timetable_periods WHERE id = ?').run(id);
-  res.json({ message: 'Period deleted successfully' });
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school before deleting its records' });
+    return;
+  }
+  try {
+    deleteSchoolRecord(getDatabase(), 'timetable_periods', req.params.id, req.institution_id);
+    res.json({ message: 'Period deleted successfully' });
+  } catch (err: any) {
+    res.status(err?.message === 'Record not found' ? 404 : 400).json({ error: err.message || 'Could not delete period' });
+  }
 });
 
 // Timetable entries

@@ -4,6 +4,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { Subject } from '../../types';
+import RecordActions from '../../components/common/RecordActions';
 
 function asList(value: any): any[] {
   if (Array.isArray(value)) return value;
@@ -172,13 +173,14 @@ export default function SubjectsPage() {
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Code</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Classes</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Status</th>
+                <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={4} className="py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={5} className="py-12 text-center text-gray-400">Loading...</td></tr>
               ) : subjectList.length === 0 ? (
-                <tr><td colSpan={4} className="py-12 text-center text-gray-400">No subjects found</td></tr>
+                <tr><td colSpan={5} className="py-12 text-center text-gray-400">No subjects found</td></tr>
               ) : (
                 subjectList.map((subject) => {
                   const classesForSubject = assignmentList.filter((item) => item.subject_id === subject.id).map((item) => item.class_name).filter(Boolean);
@@ -191,10 +193,16 @@ export default function SubjectsPage() {
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                           subject.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                         }`}>
-                          {subject.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                    </tr>
+                        {subject.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3">
+                      <RecordActions resource="subjects" id={subject.id} label={subject.name} invalidate={['subjects', 'class-subjects']} fields={[
+                        { key: 'name', label: 'Name' },
+                        { key: 'code', label: 'Code' },
+                      ]} record={subject} />
+                    </td>
+                  </tr>
                   );
                 })
               )}

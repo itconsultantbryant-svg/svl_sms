@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Plus, ClipboardList } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 import { AcademicSession } from '../../types';
 
 export default function ExamsPage() {
@@ -145,6 +146,12 @@ export default function ExamsPage() {
                 <p>{exam.schedule_count} schedules, {exam.class_count} classes</p>
               </div>
               <div className="flex gap-2 mt-4">
+                <RecordActions resource="exams" id={exam.id} label={exam.name} invalidate={['exams']} fields={[
+                  { key: 'name', label: 'Name' },
+                  { key: 'start_date', label: 'Start', type: 'date' },
+                  { key: 'end_date', label: 'End', type: 'date' },
+                  { key: 'status', label: 'Status' },
+                ]} record={exam} />
                 <Link to={`/examinations/${exam.id}/schedules`} className="btn-secondary text-xs px-3 py-1">Schedules</Link>
                 <Link to={`/examinations/${exam.id}/marks`} className="btn-secondary text-xs px-3 py-1">Marks</Link>
                 <Link to={`/examinations/${exam.id}/results`} className="btn-primary text-xs px-3 py-1">Results</Link>

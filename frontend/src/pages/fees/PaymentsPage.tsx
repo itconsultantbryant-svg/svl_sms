@@ -4,7 +4,9 @@ import { useLocation } from 'react-router-dom';
 import { DollarSign, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
-import { openPrintDocument } from '../../utils/printDocument';
+import DocumentActions from '../../components/common/DocumentActions';
+import RecordActions from '../../components/common/RecordActions';
+import { SchoolDoc, schoolName, schoolPlace } from '../../utils/schoolDocument';
 
 export default function PaymentsPage() {
   const location = useLocation();
@@ -181,9 +183,12 @@ export default function PaymentsPage() {
                   <td className="py-3 px-3 capitalize">{p.payment_method?.replace('_', ' ')}</td>
                   <td className="py-3 px-3">{p.payment_date}</td>
                   <td className="py-3 px-3">
-                    <button onClick={() => setReceiptId(p.id)} className="text-primary-600 hover:underline text-xs font-medium">
-                      <Printer size={14} className="inline mr-1" />Receipt
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setReceiptId(p.id)} className="text-primary-600 hover:underline text-xs font-medium">
+                        <Printer size={14} className="inline mr-1" />Receipt
+                      </button>
+                      <RecordActions resource="payments" id={p.id} label={p.payment_number} invalidate={['payments', 'invoices', 'finance-dashboard']} />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -207,14 +212,36 @@ export default function PaymentsPage() {
 
 function ReceiptView({ receipt, onBack }: { receipt: any; onBack: () => void }) {
   const { payment, institution } = receipt;
+  const receiptDoc: SchoolDoc = {
+    title: 'PAYMENT RECEIPT',
+    filename: `receipt-${payment.payment_number || payment.id}.pdf`,
+    school: institution || {},
+    meta: [
+      { label: 'Receipt No.', value: payment.payment_number || '' },
+      { label: 'Date', value: payment.payment_date || '' },
+      { label: 'Method', value: String(payment.payment_method || '').replace('_', ' ') },
+      { label: 'Student', value: `${payment.first_name || ''} ${payment.last_name || ''}`.trim() },
+      { label: 'Admission No.', value: payment.admission_number || '' },
+      { label: 'Class', value: [payment.class_name, payment.section_name].filter(Boolean).join(' ') },
+      { label: 'Invoice', value: payment.invoice_number || '' },
+    ],
+    columns: ['Description', 'Amount'],
+    rows: [
+      ['Amount paid', Number(payment.amount || 0).toFixed(2)],
+      ['Remaining balance', Number(payment.balance || 0).toFixed(2)],
+    ],
+    footer: [`Received by: ${payment.received_first || ''} ${payment.received_last || ''}`.trim()],
+  };
   return (
     <div className="space-y-4">
       <button onClick={onBack} className="btn-secondary text-sm">Back to Payments</button>
       <div className="card max-w-2xl mx-auto print:shadow-none" id="receipt">
         <div className="text-center border-b pb-4 mb-4">
-          <h2 className="text-xl font-bold">{institution?.name || 'SVL Academy'}</h2>
-          <p className="text-sm text-gray-500">{institution?.address}</p>
-          <p className="text-sm text-gray-500">{institution?.phone} | {institution?.email}</p>
+          {institution?.logo ? <img src={institution.logo} alt="" className="h-16 mx-auto mb-2 object-contain" /> : null}
+          <h2 className="text-xl font-bold">{schoolName(institution)}</h2>
+          {institution?.motto ? <p className="text-sm text-gray-500 italic">{institution.motto}</p> : null}
+          <p className="text-sm text-gray-500">{schoolPlace(institution)}</p>
+          <p className="text-sm text-gray-500">{[institution?.phone, institution?.email].filter(Boolean).join(' | ')}</p>
           <p className="mt-2 font-semibold text-primary-600">PAYMENT RECEIPT</p>
         </div>
 
@@ -250,11 +277,7 @@ function ReceiptView({ receipt, onBack }: { receipt: any; onBack: () => void }) 
           <p>Received by: {payment.received_first} {payment.received_last}</p>
         </div>
 
-        <div className="mt-6 text-center">
-          <button onClick={() => openPrintDocument(`Receipt ${payment.payment_number || ''}`, document.getElementById('receipt')?.innerHTML || '')} className="btn-primary">
-            <Printer size={16} className="mr-2" /> Preview / Download
-          </button>
-        </div>
+        <DocumentActions doc={receiptDoc} />
       </div>
     </div>
   );

@@ -3,10 +3,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { parseSpreadsheetFile, downloadTextFile } from '../../utils/spreadsheet';
-import { escapeHtml, openPrintDocument, downloadStoredFile } from '../../utils/printDocument';
+import { downloadStoredFile } from '../../utils/printDocument';
+import RecordActions from '../../components/common/RecordActions';
+import { useSchool } from '../../hooks/useSchool';
+import { lessonPlanDoc, openSchoolDocument, downloadSchoolPdf } from '../../utils/schoolDocument';
 
 export default function LessonPlansAdminPage() {
   const qc = useQueryClient();
+  const { data: school } = useSchool();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     title: '',
@@ -87,12 +91,9 @@ export default function LessonPlansAdminPage() {
   };
 
   const preview = (plan: any) => {
-    openPrintDocument(plan.title, `
-      <h1>${escapeHtml(plan.title)}</h1>
-      <p class="meta">${escapeHtml(plan.class_name || 'Any class')} · ${escapeHtml(plan.subject_name || 'Any subject')}</p>
-      <p>${escapeHtml(plan.description || '')}</p>
-      ${plan.file_data ? `<p><a href="${plan.file_data}" download="${escapeHtml(plan.file_name || 'attachment')}">Attachment</a></p>` : ''}
-    `);
+    const doc = lessonPlanDoc(plan, school || {});
+    openSchoolDocument(doc);
+    downloadSchoolPdf(doc);
   };
 
   return (
@@ -202,6 +203,10 @@ export default function LessonPlansAdminPage() {
                 <td className="py-2 pr-4 capitalize">{p.status}</td>
                 <td className="py-2">
                   <button type="button" className="text-primary-600 mr-3" onClick={() => preview(p)}>Preview / PDF</button>
+                  <RecordActions resource="lesson_plans" id={p.id} label={p.title} invalidate={['lesson-plans']} fields={[
+                    { key: 'title', label: 'Title' },
+                    { key: 'description', label: 'Description' },
+                  ]} record={p} />
                   {p.file_data ? (
                     <button type="button" className="text-primary-600" onClick={() => downloadStoredFile(p.file_data, p.file_name || 'lesson-plan')}>
                       Download

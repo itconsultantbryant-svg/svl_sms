@@ -211,7 +211,8 @@ feesRouter.get('/invoices/:id', (req: AuthRequest, res: Response) => {
     SELECT * FROM payments WHERE invoice_id = ? AND status = 'completed' ORDER BY payment_date DESC
   `).all(id);
 
-  res.json({ ...invoice, items, payments });
+  const institution = db.prepare('SELECT * FROM institutions WHERE id = ?').get(req.institution_id);
+  res.json({ ...invoice, items, payments, institution });
 });
 
 feesRouter.post('/invoices/generate', authorize('platform_admin', 'institution_admin', 'accountant', 'finance_officer', 'finance'), (req: AuthRequest, res: Response) => {

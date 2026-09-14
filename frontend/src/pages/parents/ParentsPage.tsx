@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import api from '../../utils/api';
 import { PaginatedResponse, Parent } from '../../types';
 import RecordView from '../../components/common/RecordView';
+import RecordActions from '../../components/common/RecordActions';
 
 export default function ParentsPage() {
   const [page, setPage] = useState(1);
@@ -74,7 +75,16 @@ export default function ParentsPage() {
                     <td className="py-3 px-3">{parent.children_count || 0}</td>
                     <td className="py-3 px-3">{parent.occupation || '-'}</td>
                     <td className="py-3 px-3">
-                      <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(parent.id)}>View</button>
+                      <div className="flex items-center gap-2">
+                        <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(parent.id)}>View</button>
+                        <RecordActions resource="parents" id={parent.id} label={`${parent.first_name} ${parent.last_name}`} invalidate={['parents']} fields={[
+                          { key: 'first_name', label: 'First name' },
+                          { key: 'last_name', label: 'Last name' },
+                          { key: 'phone', label: 'Phone' },
+                          { key: 'email', label: 'Email' },
+                          { key: 'occupation', label: 'Occupation' },
+                        ]} record={parent} />
+                      </div>
                     </td>
                   </tr>
                 ))

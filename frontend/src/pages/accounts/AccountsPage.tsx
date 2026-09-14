@@ -4,6 +4,7 @@ import { Plus, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import React from 'react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 
 type Tab = 'overview' | 'income' | 'expenses' | 'categories' | 'ledger';
 
@@ -206,13 +207,14 @@ function IncomeTab({ dateRange, showForm, setShowForm }: { dateRange: any; showF
               <th className="text-left py-3 px-3 font-medium text-gray-500">Description</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Method</th>
               <th className="text-right py-3 px-3 font-medium text-gray-500">Amount</th>
+              <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={5} className="py-12 text-center text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
             ) : !data?.data?.length ? (
-              <tr><td colSpan={5} className="py-12 text-center text-gray-400">No income recorded</td></tr>
+              <tr><td colSpan={6} className="py-12 text-center text-gray-400">No income recorded</td></tr>
             ) : data.data.map((item: any) => (
               <tr key={item.id} className="border-b border-gray-100">
                 <td className="py-3 px-3">{item.date}</td>
@@ -220,6 +222,13 @@ function IncomeTab({ dateRange, showForm, setShowForm }: { dateRange: any; showF
                 <td className="py-3 px-3 text-gray-500">{item.description || '-'}</td>
                 <td className="py-3 px-3 capitalize">{item.payment_method?.replace('_', ' ')}</td>
                 <td className="py-3 px-3 text-right font-medium text-green-600">${item.amount.toFixed(2)}</td>
+                <td className="py-3 px-3">
+                  <RecordActions resource="income" id={item.id} label="income" invalidate={['income', 'accounts-report', 'finance-dashboard']} fields={[
+                    { key: 'amount', label: 'Amount', type: 'number' },
+                    { key: 'date', label: 'Date', type: 'date' },
+                    { key: 'description', label: 'Description' },
+                  ]} record={item} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -317,13 +326,14 @@ function ExpensesTab({ dateRange, showForm, setShowForm }: { dateRange: any; sho
               <th className="text-left py-3 px-3 font-medium text-gray-500">Description</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Method</th>
               <th className="text-right py-3 px-3 font-medium text-gray-500">Amount</th>
+              <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={7} className="py-12 text-center text-gray-400">Loading...</td></tr>
             ) : !data?.data?.length ? (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400">No expenses recorded</td></tr>
+              <tr><td colSpan={7} className="py-12 text-center text-gray-400">No expenses recorded</td></tr>
             ) : data.data.map((item: any) => (
               <tr key={item.id} className="border-b border-gray-100">
                 <td className="py-3 px-3">{item.date}</td>
@@ -332,6 +342,14 @@ function ExpensesTab({ dateRange, showForm, setShowForm }: { dateRange: any; sho
                 <td className="py-3 px-3 text-gray-500">{item.description || '-'}</td>
                 <td className="py-3 px-3 capitalize">{item.payment_method?.replace('_', ' ')}</td>
                 <td className="py-3 px-3 text-right font-medium text-red-600">${item.amount.toFixed(2)}</td>
+                <td className="py-3 px-3">
+                  <RecordActions resource="expenses" id={item.id} label="expense" invalidate={['expenses', 'accounts-report', 'finance-dashboard']} fields={[
+                    { key: 'amount', label: 'Amount', type: 'number' },
+                    { key: 'date', label: 'Date', type: 'date' },
+                    { key: 'description', label: 'Description' },
+                    { key: 'vendor', label: 'Vendor' },
+                  ]} record={item} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -455,9 +473,13 @@ function CategoriesTab() {
       </form>
       <div className="card">
         {list.map((c: any) => (
-          <div key={c.id} className="py-2 border-b text-sm flex justify-between">
+          <div key={c.id} className="py-2 border-b text-sm flex justify-between items-center gap-3">
             <span className="font-medium">{c.name}</span>
-            <span className="text-gray-500">{c.description || ''}</span>
+            <span className="text-gray-500 flex-1">{c.description || ''}</span>
+            <RecordActions resource={kind === 'income' ? 'income_categories' : 'expense_categories'} id={c.id} label={c.name} invalidate={['income-categories', 'expense-categories']} fields={[
+              { key: 'name', label: 'Name' },
+              { key: 'description', label: 'Description' },
+            ]} record={c} />
           </div>
         ))}
         {!list.length && <p className="text-sm text-gray-400">No categories yet</p>}

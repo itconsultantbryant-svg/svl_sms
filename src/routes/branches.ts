@@ -3,6 +3,7 @@ import { getDatabase } from '../database/init';
 import { AuthRequest, authorize } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId } from '../utils/helpers';
+import { deleteSchoolRecord } from '../utils/purgeRecords';
 
 export const branchesRouter = Router();
 
@@ -113,9 +114,14 @@ branchesRouter.put('/:id', authorize('platform_admin', 'institution_admin'), (re
 });
 
 branchesRouter.delete('/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
-  const db = getDatabase();
-  db.prepare(`UPDATE branches SET is_active = 0, updated_at = datetime('now') WHERE id = ? AND institution_id = ?`)
-    .run(id, req.institution_id);
-  res.json({ message: 'Branch deactivated successfully' });
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school before deleting its records' });
+    return;
+  }
+  try {
+    deleteSchoolRecord(getDatabase(), 'branches', req.params.id, req.institution_id);
+    res.json({ message: 'Branch deleted' });
+  } catch (err: any) {
+    res.status(err?.message === 'Record not found' ? 404 : 400).json({ error: err.message || 'Could not delete branch' });
+  }
 });

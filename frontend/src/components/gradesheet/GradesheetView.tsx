@@ -1,4 +1,6 @@
-import { escapeHtml, openPrintDocument } from '../../utils/printDocument';
+import { escapeHtml } from '../../utils/printDocument';
+import DocumentActions from '../common/DocumentActions';
+import { downloadSchoolPdf, openSchoolDocument, SchoolDoc } from '../../utils/schoolDocument';
 
 export type GradesheetData = {
   institution?: {
@@ -28,6 +30,32 @@ export type GradesheetData = {
     term_name?: string;
   }>;
 };
+
+export function gradesheetDoc(sheet: GradesheetData): SchoolDoc {
+  const school = sheet.institution || {};
+  const student = sheet.student || {};
+  return {
+    title: 'STUDENT GRADESHEET',
+    filename: `${(student.admission_number || 'gradesheet').toString().toLowerCase()}.pdf`,
+    school,
+    meta: [
+      { label: 'Student', value: `${student.first_name || ''} ${student.last_name || ''}`.trim() },
+      { label: 'Admission No.', value: student.admission_number || '' },
+      { label: 'Class', value: [student.class_name, student.section_name].filter(Boolean).join(' — ') },
+      { label: 'Session', value: student.session_name || '' },
+    ],
+    columns: ['#', 'Subject', 'Code', 'Score %', 'Grade', 'Term'],
+    rows: (sheet.subjects || []).map((subject, index) => [
+      index + 1,
+      subject.name,
+      subject.code || '',
+      subject.percent == null ? '' : subject.percent,
+      subject.letter || '',
+      subject.term_name || '',
+    ]),
+    footer: ['Class Teacher ________________    Principal ________________    Date ________________'],
+  };
+}
 
 export function gradesheetHtml(sheet: GradesheetData): string {
   const school = sheet.institution || {};
@@ -79,12 +107,9 @@ export function gradesheetHtml(sheet: GradesheetData): string {
 }
 
 export function printGradesheet(sheet: GradesheetData) {
-  const student = sheet.student || {};
-  openPrintDocument(
-    `${sheet.institution?.institution_name || 'School'} gradesheet`,
-    gradesheetHtml(sheet)
-  );
-  void student;
+  const doc = gradesheetDoc(sheet);
+  openSchoolDocument(doc);
+  downloadSchoolPdf(doc);
 }
 
 export default function GradesheetView({ sheet }: { sheet: GradesheetData }) {
@@ -136,6 +161,7 @@ export default function GradesheetView({ sheet }: { sheet: GradesheetData }) {
           </tbody>
         </table>
       </div>
+      <DocumentActions doc={gradesheetDoc(sheet)} />
     </div>
   );
 }

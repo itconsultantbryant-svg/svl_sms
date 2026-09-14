@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 import { parseSpreadsheetFile, downloadTextFile } from '../../utils/spreadsheet';
 
 type ColumnDraft = { name: string; weight: number; max_score: number };
@@ -335,7 +336,10 @@ export default function GradebookAdminPage() {
                   <td className="py-2 pr-4">{g.subject_name}</td>
                   <td className="py-2 pr-4">{g.teacher_name}</td>
                   <td className="py-2 pr-4 capitalize">{g.status}</td>
-                  <td className="py-2"><Link className="text-primary-600" to={`/gradebook/${g.id}`}>View</Link></td>
+                  <td className="py-2 flex items-center gap-3">
+                    <Link className="text-primary-600" to={`/gradebook/${g.id}`}>View</Link>
+                    <RecordActions resource="gradebooks" id={g.id} label={`${g.class_name} ${g.subject_name}`} invalidate={['gradebooks']} />
+                  </td>
                 </tr>
               ))}
               {!rows.length && <tr><td colSpan={5} className="py-6 text-center text-gray-400">No gradebooks yet</td></tr>}

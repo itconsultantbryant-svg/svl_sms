@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Play, FileText, Printer } from 'lucide-react';
+import { Plus, Play, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
-import { openPrintDocument } from '../../utils/printDocument';
+import DocumentActions from '../../components/common/DocumentActions';
+import RecordActions from '../../components/common/RecordActions';
+import { SchoolDoc, schoolName } from '../../utils/schoolDocument';
 
 type Tab = 'runs' | 'salaries' | 'structures' | 'leaves' | 'loans';
 
@@ -81,7 +83,10 @@ function PayrollRunsTab() {
                   <td className="py-3 px-3 text-right text-green-600">${ps.total_earnings.toFixed(2)}</td>
                   <td className="py-3 px-3 text-right text-red-600">${ps.total_deductions.toFixed(2)}</td>
                   <td className="py-3 px-3 text-right font-medium">${ps.net_salary.toFixed(2)}</td>
-                  <td className="py-3 px-3"><button onClick={() => setViewPayslip(ps.id)} className="text-primary-600 hover:underline text-xs"><FileText size={14} className="inline mr-1" />View</button></td>
+                  <td className="py-3 px-3 flex items-center gap-2">
+                    <button onClick={() => setViewPayslip(ps.id)} className="text-primary-600 hover:underline text-xs"><FileText size={14} className="inline mr-1" />View</button>
+                    <RecordActions resource="payslips" id={ps.id} label="payslip" invalidate={['payslips', 'payroll-runs']} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -125,6 +130,7 @@ function PayrollRunsTab() {
                 <td className="py-3 px-3 flex gap-2">
                   {run.status === 'draft' && <button onClick={() => processMutation.mutate(run.id)} className="text-green-600 hover:underline text-xs font-medium"><Play size={14} className="inline mr-1" />Process</button>}
                   {run.status === 'completed' && <button onClick={() => setViewPayslips(run.id)} className="text-primary-600 hover:underline text-xs font-medium"><FileText size={14} className="inline mr-1" />Payslips</button>}
+                  <RecordActions resource="payroll_runs" id={run.id} label="payroll run" invalidate={['payroll-runs', 'payslips']} />
                 </td>
               </tr>
             ))}
@@ -143,6 +149,25 @@ function PayslipView({ id, onBack }: { id: string; onBack: () => void }) {
   const earnings = items.filter((i: any) => i.type === 'earning');
   const deductions = items.filter((i: any) => i.type === 'deduction');
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const payslipDoc: SchoolDoc = {
+    title: 'PAYSLIP',
+    filename: `payslip-${payslip.emp_number || payslip.id}.pdf`,
+    school: institution || {},
+    subtitle: `${months[(payslip.month - 1)] || payslip.month} ${payslip.year}`,
+    meta: [
+      { label: 'Employee', value: `${payslip.first_name || ''} ${payslip.last_name || ''}`.trim() },
+      { label: 'Employee ID', value: payslip.emp_number || '' },
+      { label: 'Department', value: payslip.department_name || '' },
+      { label: 'Designation', value: payslip.designation_name || '' },
+    ],
+    columns: ['Item', 'Type', 'Amount'],
+    rows: [
+      ...items.map((item: any) => [item.component_name, item.type, Number(item.amount || 0).toFixed(2)]),
+      ['Total earnings', '', Number(payslip.total_earnings || 0).toFixed(2)],
+      ['Total deductions', '', Number(payslip.total_deductions || 0).toFixed(2)],
+      ['Net salary', '', Number(payslip.net_salary || 0).toFixed(2)],
+    ],
+  };
 
   return (
     <div className="space-y-4">
@@ -152,7 +177,7 @@ function PayslipView({ id, onBack }: { id: string; onBack: () => void }) {
           {institution?.logo ? (
             <img src={institution.logo} alt="" className="h-16 mx-auto mb-2 object-contain" />
           ) : null}
-          <h2 className="text-xl font-bold">{institution?.institution_name || institution?.name || 'School'}</h2>
+          <h2 className="text-xl font-bold">{schoolName(institution)}</h2>
           {institution?.motto ? <p className="text-sm text-gray-500 italic">{institution.motto}</p> : null}
           <p className="text-sm text-gray-500">{[institution?.address, institution?.city, institution?.county].filter(Boolean).join(', ')}</p>
           <p className="mt-2 font-semibold text-primary-600">PAYSLIP - {months[(payslip.month - 1)]} {payslip.year}</p>
@@ -191,9 +216,7 @@ function PayslipView({ id, onBack }: { id: string; onBack: () => void }) {
           <span className="text-primary-700">${payslip.net_salary.toFixed(2)}</span>
         </div>
 
-        <div className="mt-6 text-center print:hidden">
-          <button onClick={() => openPrintDocument(`Payslip ${payslip.first_name} ${payslip.last_name}`, document.getElementById('payslip')?.innerHTML || '')} className="btn-primary"><Printer size={16} className="mr-2" /> Preview / Download</button>
-        </div>
+        <DocumentActions doc={payslipDoc} />
       </div>
     </div>
   );

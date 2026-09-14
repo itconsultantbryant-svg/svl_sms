@@ -1,7 +1,8 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { getDatabase } from '../database/init';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest, authorize } from '../middleware/auth';
+import { deleteSchoolRecord } from '../utils/purgeRecords';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId, generateAdmissionNumber, generateDefaultPassword, paginate, buildSearchQuery } from '../utils/helpers';
 import { ensureUserRole, ensurePortalRole } from '../utils/userAccess';
@@ -31,6 +32,7 @@ studentsRouter.get('/', (req: AuthRequest, res: Response) => {
   if (classId) { where += ' AND s.class_id = ?'; params.push(classId); }
   if (section) { where += ' AND s.section_id = ?'; params.push(section); }
   if (status) { where += ' AND s.status = ?'; params.push(status); }
+  else { where += " AND (s.status IS NULL OR s.status != 'inactive')"; }
   if (session) { where += ' AND s.session_id = ?'; params.push(session); }
 
   if (req.user?.branch_id) {
@@ -377,9 +379,15 @@ studentsRouter.put('/:id', (req: AuthRequest, res: Response) => {
   res.json({ message: 'Student updated successfully' });
 });
 
-studentsRouter.delete('/:id', (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
-  const db = getDatabase();
-  db.prepare("UPDATE students SET status = 'inactive', updated_at = datetime('now') WHERE id = ?").run(id);
-  res.json({ message: 'Student deactivated successfully' });
+studentsRouter.delete('/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school before deleting its records' });
+    return;
+  }
+  try {
+    deleteSchoolRecord(getDatabase(), 'students', req.params.id, req.institution_id, { userColumn: 'user_id' });
+    res.json({ message: 'Student deleted' });
+  } catch (err: any) {
+    res.status(err?.message === 'Record not found' ? 404 : 400).json({ error: err.message || 'Could not delete student' });
+  }
 });

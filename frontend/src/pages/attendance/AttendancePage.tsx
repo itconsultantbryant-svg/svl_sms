@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 import { Class, Section, Student } from '../../types';
 
 export default function AttendancePage() {
@@ -173,6 +174,7 @@ export default function AttendancePage() {
                   <th className="text-center py-3 px-3 font-medium text-red-600">Absent</th>
                   <th className="text-center py-3 px-3 font-medium text-yellow-600">Late</th>
                   <th className="text-left py-3 px-3 font-medium text-gray-500">Total</th>
+                  <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -186,6 +188,9 @@ export default function AttendancePage() {
                     <td className="py-3 px-3 text-center text-red-600 font-medium">{session.absent_count}</td>
                     <td className="py-3 px-3 text-center text-yellow-600 font-medium">{session.late_count}</td>
                     <td className="py-3 px-3">{session.total_count}</td>
+                    <td className="py-3 px-3">
+                      <RecordActions resource="attendance" id={session.id} label={`${session.date} attendance`} invalidate={['attendance-sessions']} />
+                    </td>
                   </tr>
                 ))}
               </tbody>

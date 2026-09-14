@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { Class, Branch } from '../../types';
 import RecordView from '../../components/common/RecordView';
+import RecordActions from '../../components/common/RecordActions';
 
 export default function ClassesPage() {
   const queryClient = useQueryClient();
@@ -121,7 +122,13 @@ export default function ClassesPage() {
                       </span>
                     </td>
                     <td className="py-3 px-3">
-                      <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(cls.id)}>View</button>
+                      <div className="flex items-center gap-2">
+                        <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(cls.id)}>View</button>
+                        <RecordActions resource="classes" id={cls.id} label={cls.name} invalidate={['classes']} fields={[
+                          { key: 'name', label: 'Name' },
+                          { key: 'capacity', label: 'Capacity', type: 'number' },
+                        ]} record={cls} />
+                      </div>
                     </td>
                   </tr>
                 ))

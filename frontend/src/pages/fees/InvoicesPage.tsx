@@ -2,7 +2,74 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../utils/api';
-import RecordView from '../../components/common/RecordView';
+import DocumentActions from '../../components/common/DocumentActions';
+import RecordActions from '../../components/common/RecordActions';
+import { SchoolDoc, schoolName, schoolPlace } from '../../utils/schoolDocument';
+
+function invoiceDoc(invoice: any): SchoolDoc {
+  const school = invoice.institution || {};
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+  return {
+    title: 'INVOICE',
+    filename: `invoice-${invoice.invoice_number || invoice.id}.pdf`,
+    school,
+    subtitle: invoice.invoice_number || '',
+    meta: [
+      { label: 'Student', value: `${invoice.first_name || ''} ${invoice.last_name || ''}`.trim() },
+      { label: 'Admission No.', value: invoice.admission_number || '' },
+      { label: 'Class', value: [invoice.class_name, invoice.section_name].filter(Boolean).join(' ') },
+      { label: 'Status', value: invoice.status || '' },
+      { label: 'Due date', value: invoice.due_date || '' },
+    ],
+    columns: ['Description', 'Amount'],
+    rows: [
+      ...items.map((item: any) => [item.fee_type_name || item.description || 'Fee', Number(item.net_amount ?? item.amount ?? 0).toFixed(2)]),
+      ['Total', Number(invoice.total_amount || 0).toFixed(2)],
+      ['Paid', Number(invoice.paid_amount || 0).toFixed(2)],
+      ['Balance', Number(invoice.balance || 0).toFixed(2)],
+    ],
+  };
+}
+
+function InvoiceDocument({ invoice, onClose }: { invoice: any; onClose: () => void }) {
+  const school = invoice.institution || {};
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
+        <div className="flex justify-end">
+          <button type="button" className="text-sm text-gray-500" onClick={onClose}>Close</button>
+        </div>
+        <div className="text-center border-b pb-4 mb-4">
+          {school.logo ? <img src={school.logo} alt="" className="h-16 mx-auto mb-2 object-contain" /> : null}
+          <h2 className="text-xl font-bold">{schoolName(school)}</h2>
+          {school.motto ? <p className="text-sm text-gray-500 italic">{school.motto}</p> : null}
+          <p className="text-sm text-gray-500">{schoolPlace(school)}</p>
+          <p className="mt-2 font-semibold text-primary-600">INVOICE {invoice.invoice_number}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm mb-4">
+          <p><span className="text-gray-500">Student:</span> {invoice.first_name} {invoice.last_name}</p>
+          <p><span className="text-gray-500">Admission No.:</span> {invoice.admission_number || '—'}</p>
+          <p><span className="text-gray-500">Class:</span> {invoice.class_name || '—'}</p>
+          <p><span className="text-gray-500">Due:</span> {invoice.due_date || '—'}</p>
+        </div>
+        <table className="w-full text-sm">
+          <thead><tr className="border-b"><th className="text-left py-2">Description</th><th className="text-right py-2">Amount</th></tr></thead>
+          <tbody>
+            {items.map((item: any) => (
+              <tr key={item.id} className="border-b border-gray-100">
+                <td className="py-2">{item.fee_type_name || item.description || 'Fee'}</td>
+                <td className="py-2 text-right">${Number(item.net_amount ?? item.amount ?? 0).toFixed(2)}</td>
+              </tr>
+            ))}
+            <tr><td className="py-2 font-medium">Balance</td><td className="py-2 text-right font-medium">${Number(invoice.balance || 0).toFixed(2)}</td></tr>
+          </tbody>
+        </table>
+        <DocumentActions doc={invoiceDoc(invoice)} />
+      </div>
+    </div>
+  );
+}
 
 export default function InvoicesPage() {
   const [page, setPage] = useState(1);
@@ -88,7 +155,14 @@ export default function InvoicesPage() {
                   </td>
                   <td className="py-3 px-3 text-gray-500">{inv.due_date || '-'}</td>
                   <td className="py-3 px-3">
-                    <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(inv.id)}>View</button>
+                    <div className="flex items-center gap-2">
+                      <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(inv.id)}>View</button>
+                      <RecordActions resource="invoices" id={inv.id} label={inv.invoice_number} invalidate={['invoices', 'finance-dashboard', 'dashboard-finance']} fields={[
+                        { key: 'status', label: 'Status' },
+                        { key: 'due_date', label: 'Due date', type: 'date' },
+                        { key: 'notes', label: 'Notes' },
+                      ]} record={inv} />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -107,21 +181,7 @@ export default function InvoicesPage() {
         )}
       </div>
       {viewed && viewId && (
-        <RecordView
-          title={viewed.invoice_number || 'Invoice'}
-          onClose={() => setViewId(null)}
-          fields={[
-            { label: 'Student', value: `${viewed.first_name || ''} ${viewed.last_name || ''}`.trim() },
-            { label: 'Admission number', value: viewed.admission_number },
-            { label: 'Class', value: viewed.class_name },
-            { label: 'Total', value: viewed.total_amount },
-            { label: 'Paid', value: viewed.paid_amount },
-            { label: 'Balance', value: viewed.balance },
-            { label: 'Status', value: viewed.status },
-            { label: 'Due date', value: viewed.due_date },
-            { label: 'Items', value: viewed.items },
-          ]}
-        />
+        <InvoiceDocument invoice={viewed} onClose={() => setViewId(null)} />
       )}
     </div>
   );

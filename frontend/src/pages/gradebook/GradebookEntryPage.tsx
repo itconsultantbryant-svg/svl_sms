@@ -4,11 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
-import { escapeHtml, openPrintDocument } from '../../utils/printDocument';
+import DocumentActions from '../../components/common/DocumentActions';
+import { useSchool } from '../../hooks/useSchool';
+import { SchoolDoc } from '../../utils/schoolDocument';
 
 export default function GradebookEntryPage() {
   const { id } = useParams();
   const { user } = useAuth();
+  const { data: school } = useSchool();
   const isAdmin = user?.user_type === 'institution_admin' || user?.user_type === 'platform_admin';
   const [scores, setScores] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -69,19 +72,28 @@ export default function GradebookEntryPage() {
     }
   };
 
-  const exportPdf = () => {
+  const gradebookDoc = (): SchoolDoc => {
     const cols = data.columns || [];
-    const header = cols.map((c: any) => `<th>${escapeHtml(c.name)} (${c.weight}%)</th>`).join('');
-    const body = (data.students || []).map((s: any) => {
-      const cells = cols.map((c: any) => `<td>${escapeHtml(scores[`${s.id}:${c.id}`] || '')}</td>`).join('');
-      const total = totalsByStudent[s.id];
-      return `<tr><td>${escapeHtml(s.last_name)}, ${escapeHtml(s.first_name)}</td>${cells}<td>${escapeHtml(total?.computed_percent ?? '')}</td><td>${escapeHtml(total?.letter_grade ?? '')}</td></tr>`;
-    }).join('');
-    openPrintDocument(`${data.subject_name} gradebook`, `
-      <h1>${escapeHtml(data.subject_name)} — ${escapeHtml(data.class_name)}</h1>
-      <p class="meta">${escapeHtml(data.term_name || '')} · Status: ${escapeHtml(data.status)}</p>
-      <table><thead><tr><th>Student</th>${header}<th>Total %</th><th>Grade</th></tr></thead><tbody>${body}</tbody></table>
-    `);
+    return {
+      title: 'GRADEBOOK',
+      filename: `${data.subject_name || 'gradebook'}-${data.class_name || 'class'}.pdf`.replace(/\s+/g, '-').toLowerCase(),
+      school: school || {},
+      subtitle: `${data.subject_name || ''} — ${data.class_name || ''}`,
+      meta: [
+        { label: 'Term', value: data.term_name || '' },
+        { label: 'Status', value: data.status || '' },
+      ],
+      columns: ['Student', ...cols.map((c: any) => `${c.name} (${c.weight}%)`), 'Total %', 'Grade'],
+      rows: (data.students || []).map((s: any) => {
+        const total = totalsByStudent[s.id];
+        return [
+          `${s.last_name}, ${s.first_name}`,
+          ...cols.map((c: any) => scores[`${s.id}:${c.id}`] || ''),
+          total?.computed_percent ?? '',
+          total?.letter_grade ?? '',
+        ];
+      }),
+    };
   };
 
   const approve = async () => {
@@ -118,7 +130,7 @@ export default function GradebookEntryPage() {
               <button type="button" className="btn-primary" onClick={submit}>Submit for approval</button>
             </>
           )}
-          <button type="button" className="btn-secondary" onClick={exportPdf}>Preview / Download PDF</button>
+          {data ? <DocumentActions doc={gradebookDoc()} className="flex gap-2 print:hidden" /> : null}
           {isAdmin && data.status === 'submitted' && (
             <button type="button" className="btn-primary" onClick={approve}>Approve</button>
           )}

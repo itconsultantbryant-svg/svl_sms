@@ -225,6 +225,6 @@ usersRouter.delete('/:id', authorize('platform_admin', 'institution_admin'), (re
     res.json({ message: 'User deleted successfully' });
   } catch (error: any) {
     console.error('Delete user error:', error);
-    res.status(500).json({ error: 'Failed to delete user', details: error.message });
+    res.status(400).json({ error: error.message || 'Failed to delete user' });
   }
 });

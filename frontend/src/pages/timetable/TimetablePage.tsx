@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 import { Class, Section, Subject, Employee } from '../../types';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -55,6 +56,11 @@ export default function TimetablePage() {
   });
 
   const currentSession = sessions?.find((s: any) => s.is_current);
+  const { data: terms } = useQuery<any[]>({
+    queryKey: ['terms', currentSession?.id],
+    queryFn: () => api.get('/academics/terms', { params: { session_id: currentSession?.id } }).then(r => r.data),
+    enabled: !!currentSession?.id,
+  });
 
   const addMutation = useMutation({
     mutationFn: (data: any) => api.post('/timetable/entries', data),
@@ -176,7 +182,31 @@ export default function TimetablePage() {
               </div>
             </div>
             <button className="btn-primary" type="submit" disabled={addTerm.isPending}>Create term</button>
+            <div className="space-y-1 text-sm">
+              {(Array.isArray(terms) ? terms : []).map((term: any) => (
+                <div key={term.id} className="flex items-center justify-between gap-2">
+                  <span>{term.name}</span>
+                  <RecordActions resource="terms" id={term.id} label={term.name} invalidate={['terms']} fields={[
+                    { key: 'name', label: 'Name' },
+                    { key: 'start_date', label: 'Start', type: 'date' },
+                    { key: 'end_date', label: 'End', type: 'date' },
+                  ]} record={term} />
+                </div>
+              ))}
+            </div>
           </form>
+          <div className="lg:col-span-2 card">
+            <h2 className="font-semibold mb-2">Periods</h2>
+            <div className="space-y-1 text-sm">
+              {(periods || []).map((period: any) => (
+                <div key={period.id} className="flex items-center justify-between gap-2">
+                  <span>{period.name} · {period.start_time}–{period.end_time}</span>
+                  <RecordActions resource="periods" id={period.id} label={period.name} invalidate={['periods', 'timetable']} />
+                </div>
+              ))}
+              {!periods?.length && <p className="text-gray-400">No periods yet</p>}
+            </div>
+          </div>
         </div>
       )}
 

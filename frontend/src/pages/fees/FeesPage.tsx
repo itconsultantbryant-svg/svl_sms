@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 import { Class, AcademicSession } from '../../types';
 
 export default function FeesPage() {
@@ -144,6 +145,7 @@ export default function FeesPage() {
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Code</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Description</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Recurring</th>
+                <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -153,6 +155,12 @@ export default function FeesPage() {
                   <td className="py-3 px-3">{ft.code || '-'}</td>
                   <td className="py-3 px-3 text-gray-500">{ft.description || '-'}</td>
                   <td className="py-3 px-3">{ft.is_recurring ? 'Yes' : 'No'}</td>
+                  <td className="py-3 px-3">
+                    <RecordActions resource="fee_types" id={ft.id} label={ft.name} invalidate={['fee-types', 'fee-structures']} fields={[
+                      { key: 'name', label: 'Name' },
+                      { key: 'description', label: 'Description' },
+                    ]} record={ft} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -171,11 +179,12 @@ export default function FeesPage() {
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Term</th>
                 <th className="text-right py-3 px-3 font-medium text-gray-500">Amount</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Due Date</th>
+                <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody>
               {!structures?.length ? (
-                <tr><td colSpan={6} className="py-12 text-center text-gray-400">No fee structures defined</td></tr>
+                <tr><td colSpan={7} className="py-12 text-center text-gray-400">No fee structures defined</td></tr>
               ) : structures.map(fs => (
                 <tr key={fs.id} className="border-b border-gray-100">
                   <td className="py-3 px-3 font-medium">{fs.fee_type_name}</td>
@@ -184,6 +193,12 @@ export default function FeesPage() {
                   <td className="py-3 px-3">{fs.term_name || 'All'}</td>
                   <td className="py-3 px-3 text-right font-medium">${fs.amount.toFixed(2)}</td>
                   <td className="py-3 px-3">{fs.due_date || '-'}</td>
+                  <td className="py-3 px-3">
+                    <RecordActions resource="fee_structures" id={fs.id} label={fs.fee_type_name} invalidate={['fee-structures', 'invoices']} fields={[
+                      { key: 'amount', label: 'Amount', type: 'number' },
+                      { key: 'due_date', label: 'Due date', type: 'date' },
+                    ]} record={fs} />
+                  </td>
                 </tr>
               ))}
             </tbody>

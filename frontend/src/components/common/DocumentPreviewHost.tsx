@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { downloadDocument, printHtml } from '../../utils/printDocument';
+import { downloadSchoolPdf, SchoolDoc } from '../../utils/schoolDocument';
 
-type Preview = { title: string; html: string; bodyHtml: string };
+type Preview = { title: string; html: string; bodyHtml: string; schoolDoc?: SchoolDoc };
 
 export default function DocumentPreviewHost() {
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -23,11 +24,15 @@ export default function DocumentPreviewHost() {
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <h2 className="font-semibold text-gray-900">{preview.title}</h2>
           <div className="flex gap-2">
-            <button type="button" className="btn-secondary text-sm" onClick={() => downloadDocument(preview.title, preview.bodyHtml)}>
-              Download
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              onClick={() => (preview.schoolDoc ? downloadSchoolPdf(preview.schoolDoc) : downloadDocument(preview.title, preview.bodyHtml))}
+            >
+              {preview.schoolDoc ? 'Download PDF' : 'Download'}
             </button>
-            <button type="button" className="btn-primary text-sm" onClick={() => printHtml(preview.html)}>
-              Print / Save PDF
+            <button type="button" className="btn-secondary text-sm" onClick={() => printHtml(preview.html)}>
+              Print
             </button>
             <button type="button" className="btn-secondary text-sm" onClick={() => setPreview(null)}>Close</button>
           </div>

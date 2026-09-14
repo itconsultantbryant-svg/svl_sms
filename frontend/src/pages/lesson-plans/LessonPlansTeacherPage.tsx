@@ -1,9 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
-import { escapeHtml, openPrintDocument, downloadStoredFile } from '../../utils/printDocument';
+import { downloadStoredFile } from '../../utils/printDocument';
+import { useSchool } from '../../hooks/useSchool';
+import { lessonPlanDoc, openSchoolDocument, downloadSchoolPdf } from '../../utils/schoolDocument';
 
 export default function LessonPlansTeacherPage() {
+  const { data: school } = useSchool();
   const { data, refetch, isLoading } = useQuery({
     queryKey: ['lesson-plans-mine'],
     queryFn: () => api.get('/lesson-plans/mine').then((r) => r.data),
@@ -56,7 +59,11 @@ export default function LessonPlansTeacherPage() {
               <button
                 type="button"
                 className="btn-secondary text-sm"
-                onClick={() => openPrintDocument(p.title, `<h1>${escapeHtml(p.title)}</h1><p>${escapeHtml(p.description || '')}</p>`)}
+                onClick={() => {
+                  const doc = lessonPlanDoc(p, school || {});
+                  openSchoolDocument(doc);
+                  downloadSchoolPdf(doc);
+                }}
               >
                 Preview / PDF
               </button>

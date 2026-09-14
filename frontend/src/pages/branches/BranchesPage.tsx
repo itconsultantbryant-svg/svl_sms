@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 import { Branch } from '../../types';
 
 export default function BranchesPage() {
@@ -105,6 +106,14 @@ export default function BranchesPage() {
                   <p className="text-gray-500">Staff</p>
                   <p className="font-semibold">{branch.employee_count || 0}</p>
                 </div>
+              </div>
+              <div className="mt-3">
+                <RecordActions resource="branches" id={branch.id} label={branch.name || branch.branch_name} invalidate={['branches']} fields={[
+                  { key: 'branch_name', label: 'Name' },
+                  { key: 'address', label: 'Address' },
+                  { key: 'phone', label: 'Phone' },
+                  { key: 'email', label: 'Email' },
+                ]} record={{ ...branch, branch_name: branch.branch_name || branch.name }} />
               </div>
               {branch.address && (
                 <p className="text-xs text-gray-500 mt-3">{branch.address}</p>

@@ -78,9 +78,9 @@ export function downloadDocument(title: string, bodyHtml: string, filename?: str
   window.setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-export function previewDocument(title: string, bodyHtml: string) {
+export function previewDocument(title: string, bodyHtml: string, schoolDoc?: unknown) {
   window.dispatchEvent(new CustomEvent('svl-document-preview', {
-    detail: { title, html: documentHtml(title, bodyHtml), bodyHtml },
+    detail: { title, html: documentHtml(title, bodyHtml), bodyHtml, schoolDoc },
   }));
 }
 

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 import { AcademicSession } from '../../types';
 
 export default function SessionsPage() {
@@ -93,6 +94,13 @@ export default function SessionsPage() {
               <div className="text-sm text-gray-500 space-y-1">
                 <p>Start: {session.start_date}</p>
                 <p>End: {session.end_date}</p>
+              </div>
+              <div className="mt-3">
+                <RecordActions resource="sessions" id={session.id} label={session.name} invalidate={['sessions']} fields={[
+                  { key: 'name', label: 'Name' },
+                  { key: 'start_date', label: 'Start', type: 'date' },
+                  { key: 'end_date', label: 'End', type: 'date' },
+                ]} record={session} />
               </div>
             </div>
           ))
