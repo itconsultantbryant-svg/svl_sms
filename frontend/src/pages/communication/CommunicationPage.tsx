@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Send, Bell, Mail, MessageSquare, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 
 type Tab = 'sms' | 'email' | 'announcements' | 'templates' | 'log';
 
@@ -88,10 +89,11 @@ function SMSTab() {
             <th className="text-center py-3 px-3 font-medium text-gray-500">Recipients</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Message</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Status</th>
+            <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
           </tr></thead>
           <tbody>
-            {isLoading ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
-            : !data?.data?.length ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">No SMS messages</td></tr>
+            {isLoading ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">Loading...</td></tr>
+            : !data?.data?.length ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">No SMS messages</td></tr>
             : data.data.map((sms: any) => (
               <tr key={sms.id} className="border-b border-gray-100">
                 <td className="py-3 px-3 text-gray-500 text-xs">{new Date(sms.created_at).toLocaleDateString()}</td>
@@ -100,6 +102,27 @@ function SMSTab() {
                 <td className="py-3 px-3 text-center">{sms.sent_count}/{sms.total_recipients}</td>
                 <td className="py-3 px-3 text-gray-600 truncate max-w-xs">{sms.message}</td>
                 <td className="py-3 px-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[sms.status] || ''}`}>{sms.status}</span></td>
+                <td className="py-3 px-3">
+                  <RecordActions
+                    resource="sms_messages"
+                    id={sms.id}
+                    label="SMS"
+                    invalidate={['sms', 'comm-log']}
+                    record={sms}
+                    fields={[
+                      { key: 'message', label: 'Message' },
+                      { key: 'status', label: 'Status' },
+                    ]}
+                    viewFields={[
+                      { label: 'Date', value: sms.created_at },
+                      { label: 'Sender', value: sms.sender_name },
+                      { label: 'Audience', value: sms.recipient_type },
+                      { label: 'Sent', value: `${sms.sent_count}/${sms.total_recipients}` },
+                      { label: 'Message', value: sms.message },
+                      { label: 'Status', value: sms.status },
+                    ]}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -183,10 +206,11 @@ function EmailTab() {
             <th className="text-center py-3 px-3 font-medium text-gray-500">Recipients</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Subject</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Status</th>
+            <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
           </tr></thead>
           <tbody>
-            {isLoading ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
-            : !data?.data?.length ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">No emails</td></tr>
+            {isLoading ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">Loading...</td></tr>
+            : !data?.data?.length ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">No emails</td></tr>
             : data.data.map((email: any) => (
               <tr key={email.id} className="border-b border-gray-100">
                 <td className="py-3 px-3 text-gray-500 text-xs">{new Date(email.created_at).toLocaleDateString()}</td>
@@ -195,6 +219,29 @@ function EmailTab() {
                 <td className="py-3 px-3 text-center">{email.sent_count}/{email.total_recipients}</td>
                 <td className="py-3 px-3 font-medium truncate max-w-xs">{email.subject}</td>
                 <td className="py-3 px-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[email.status] || ''}`}>{email.status}</span></td>
+                <td className="py-3 px-3">
+                  <RecordActions
+                    resource="email_messages"
+                    id={email.id}
+                    label={email.subject || 'Email'}
+                    invalidate={['emails', 'comm-log']}
+                    record={email}
+                    fields={[
+                      { key: 'subject', label: 'Subject' },
+                      { key: 'body', label: 'Body' },
+                      { key: 'status', label: 'Status' },
+                    ]}
+                    viewFields={[
+                      { label: 'Date', value: email.created_at },
+                      { label: 'Sender', value: email.sender_name },
+                      { label: 'Audience', value: email.recipient_type },
+                      { label: 'Sent', value: `${email.sent_count}/${email.total_recipients}` },
+                      { label: 'Subject', value: email.subject },
+                      { label: 'Body', value: email.body },
+                      { label: 'Status', value: email.status },
+                    ]}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -324,9 +371,23 @@ function AnnouncementsTab() {
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${priorityColors[ann.priority] || ''}`}>{ann.priority}</span>
                 {ann.is_published === 1 && <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Published</span>}
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <button onClick={() => handleEdit(ann)} className="text-primary-600 hover:underline text-xs">Edit</button>
-                <button onClick={() => deleteMutation.mutate(ann.id)} className="text-red-600 hover:underline text-xs">Delete</button>
+                <RecordActions
+                  resource="announcements"
+                  id={ann.id}
+                  label={ann.title}
+                  invalidate={['announcements']}
+                  viewFields={[
+                    { label: 'Title', value: ann.title },
+                    { label: 'Content', value: ann.content },
+                    { label: 'Type', value: ann.type },
+                    { label: 'Priority', value: ann.priority },
+                    { label: 'Audience', value: ann.audience },
+                    { label: 'Published', value: ann.is_published ? 'Yes' : 'No' },
+                    { label: 'Created', value: ann.created_at },
+                  ]}
+                />
               </div>
             </div>
             <h3 className="font-medium text-gray-900 mb-2">{ann.title}</h3>
@@ -433,7 +494,27 @@ function TemplatesTab() {
                 <td className="py-3 px-3 text-gray-600">{tpl.event}</td>
                 <td className="py-3 px-3 text-gray-500 truncate max-w-xs">{tpl.body}</td>
                 <td className="py-3 px-3">
-                  <button onClick={() => deleteMutation.mutate(tpl.id)} className="text-red-600 hover:underline text-xs">Delete</button>
+                  <RecordActions
+                    resource="notification_templates"
+                    id={tpl.id}
+                    label={tpl.name}
+                    invalidate={['templates']}
+                    record={tpl}
+                    fields={[
+                      { key: 'name', label: 'Name' },
+                      { key: 'type', label: 'Type' },
+                      { key: 'event', label: 'Event' },
+                      { key: 'subject', label: 'Subject' },
+                      { key: 'body', label: 'Body' },
+                    ]}
+                    viewFields={[
+                      { label: 'Name', value: tpl.name },
+                      { label: 'Type', value: tpl.type },
+                      { label: 'Event', value: tpl.event },
+                      { label: 'Subject', value: tpl.subject },
+                      { label: 'Body', value: tpl.body },
+                    ]}
+                  />
                 </td>
               </tr>
             ))}
@@ -473,10 +554,11 @@ function LogTab() {
             <th className="text-left py-3 px-3 font-medium text-gray-500">Recipient</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Subject/Content</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Status</th>
+            <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
           </tr></thead>
           <tbody>
-            {isLoading ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
-            : !data?.data?.length ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">No activity</td></tr>
+            {isLoading ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">Loading...</td></tr>
+            : !data?.data?.length ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">No activity</td></tr>
             : data.data.map((log: any) => {
               const Icon = channelIcons[log.channel] || FileText;
               return (
@@ -492,6 +574,23 @@ function LogTab() {
                   <td className="py-3 px-3 text-gray-600">{log.recipient}</td>
                   <td className="py-3 px-3 truncate max-w-xs text-gray-500">{log.subject || log.content}</td>
                   <td className="py-3 px-3"><span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">{log.status}</span></td>
+                  <td className="py-3 px-3">
+                    <RecordActions
+                      resource="communication_log"
+                      id={log.id}
+                      label={log.subject || log.content || 'Log'}
+                      invalidate={['comm-log']}
+                      viewFields={[
+                        { label: 'Time', value: log.created_at },
+                        { label: 'Channel', value: log.channel },
+                        { label: 'Sender', value: log.sender_name },
+                        { label: 'Recipient', value: log.recipient },
+                        { label: 'Subject', value: log.subject },
+                        { label: 'Content', value: log.content },
+                        { label: 'Status', value: log.status },
+                      ]}
+                    />
+                  </td>
                 </tr>
               );
             })}

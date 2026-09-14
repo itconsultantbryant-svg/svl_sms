@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Bus, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 
 type Tab = 'routes' | 'vehicles' | 'students';
 
@@ -64,7 +65,29 @@ function RoutesTab() {
             </div>
             <div className="mt-3 flex justify-between text-sm">
               <span className="text-gray-500">{route.student_count} students</span>
-              <span className="font-medium">${route.fare?.toFixed(2)}/mo</span>
+              <span className="font-medium">${Number(route.fare || 0).toFixed(2)}/mo</span>
+            </div>
+            <div className="mt-3">
+              <RecordActions
+                resource="transport_routes"
+                id={route.id}
+                label={route.name}
+                invalidate={['transport-routes', 'transport-students']}
+                record={route}
+                fields={[
+                  { key: 'name', label: 'Name' },
+                  { key: 'fare', label: 'Fare', type: 'number' },
+                  { key: 'description', label: 'Description' },
+                ]}
+                viewFields={[
+                  { label: 'Name', value: route.name },
+                  { label: 'Vehicle', value: route.vehicle_number },
+                  { label: 'Driver', value: route.driver_name },
+                  { label: 'Students', value: route.student_count },
+                  { label: 'Fare', value: route.fare },
+                  { label: 'Description', value: route.description },
+                ]}
+              />
             </div>
           </div>
         ))}
@@ -116,9 +139,10 @@ function VehiclesTab() {
             <th className="text-center py-3 px-3 font-medium text-gray-500">Capacity</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Status</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Routes</th>
+            <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
           </tr></thead>
           <tbody>
-            {!vehicles?.length ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">No vehicles</td></tr>
+            {!vehicles?.length ? <tr><td colSpan={8} className="py-12 text-center text-gray-400">No vehicles</td></tr>
             : vehicles.map(v => (
               <tr key={v.id} className="border-b border-gray-100">
                 <td className="py-3 px-3 font-medium">{v.vehicle_number}</td>
@@ -128,6 +152,35 @@ function VehiclesTab() {
                 <td className="py-3 px-3 text-center">{v.capacity}</td>
                 <td className="py-3 px-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[v.status] || ''}`}>{v.status}</span></td>
                 <td className="py-3 px-3">{v.route_count}</td>
+                <td className="py-3 px-3">
+                  <RecordActions
+                    resource="vehicles"
+                    id={v.id}
+                    label={v.vehicle_number}
+                    invalidate={['vehicles', 'transport-routes']}
+                    record={v}
+                    fields={[
+                      { key: 'vehicle_number', label: 'Vehicle #' },
+                      { key: 'model', label: 'Model' },
+                      { key: 'driver_name', label: 'Driver' },
+                      { key: 'driver_phone', label: 'Phone' },
+                      { key: 'capacity', label: 'Capacity', type: 'number' },
+                      { key: 'status', label: 'Status' },
+                      { key: 'insurance_expiry', label: 'Insurance expiry', type: 'date' },
+                      { key: 'notes', label: 'Notes' },
+                    ]}
+                    viewFields={[
+                      { label: 'Vehicle #', value: v.vehicle_number },
+                      { label: 'Model', value: v.model },
+                      { label: 'Driver', value: v.driver_name },
+                      { label: 'Phone', value: v.driver_phone },
+                      { label: 'Capacity', value: v.capacity },
+                      { label: 'Status', value: v.status },
+                      { label: 'Insurance', value: v.insurance_expiry },
+                      { label: 'Routes', value: v.route_count },
+                    ]}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -150,9 +203,10 @@ function StudentsTab() {
             <th className="text-left py-3 px-3 font-medium text-gray-500">Class</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Route</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Stop</th>
+            <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
           </tr></thead>
           <tbody>
-            {!assignments?.length ? <tr><td colSpan={5} className="py-12 text-center text-gray-400">No student transport assignments</td></tr>
+            {!assignments?.length ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">No student transport assignments</td></tr>
             : assignments.map(a => (
               <tr key={a.id} className="border-b border-gray-100">
                 <td className="py-3 px-3 font-medium">{a.first_name} {a.last_name}</td>
@@ -160,6 +214,23 @@ function StudentsTab() {
                 <td className="py-3 px-3">{a.class_name || '-'}</td>
                 <td className="py-3 px-3">{a.route_name}</td>
                 <td className="py-3 px-3">{a.stop_name || '-'}</td>
+                <td className="py-3 px-3">
+                  <RecordActions
+                    resource="student_transport"
+                    id={a.id}
+                    label={`${a.first_name} ${a.last_name}`}
+                    invalidate={['transport-students', 'routes']}
+                    record={a}
+                    fields={[]}
+                    viewFields={[
+                      { label: 'Student', value: `${a.first_name || ''} ${a.last_name || ''}`.trim() },
+                      { label: 'Admission #', value: a.admission_number },
+                      { label: 'Class', value: a.class_name },
+                      { label: 'Route', value: a.route_name },
+                      { label: 'Stop', value: a.stop_name },
+                    ]}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>

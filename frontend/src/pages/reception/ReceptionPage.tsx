@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, LogOut } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 
 type Tab = 'visitors' | 'calls' | 'postal';
 
@@ -89,7 +90,33 @@ function VisitorsTab() {
                 <td className="py-3 px-3 text-xs">{v.check_in?.replace('T', ' ').slice(0, 16)}</td>
                 <td className="py-3 px-3 text-xs">{v.check_out ? v.check_out.replace('T', ' ').slice(0, 16) : <span className="text-green-600 font-medium">In premises</span>}</td>
                 <td className="py-3 px-3">
-                  {!v.check_out && <button onClick={() => checkoutMutation.mutate(v.id)} className="text-red-600 hover:underline text-xs font-medium"><LogOut size={14} className="inline mr-1" />Check Out</button>}
+                  <div className="flex items-center gap-2">
+                    {!v.check_out && <button onClick={() => checkoutMutation.mutate(v.id)} className="text-red-600 hover:underline text-xs font-medium"><LogOut size={14} className="inline mr-1" />Check Out</button>}
+                    <RecordActions
+                      resource="visitors"
+                      id={v.id}
+                      label={v.name}
+                      invalidate={['visitors']}
+                      record={v}
+                      fields={[
+                        { key: 'name', label: 'Name' },
+                        { key: 'phone', label: 'Phone' },
+                        { key: 'purpose', label: 'Purpose' },
+                        { key: 'to_meet', label: 'To meet' },
+                        { key: 'notes', label: 'Notes' },
+                      ]}
+                      viewFields={[
+                        { label: 'Name', value: v.name },
+                        { label: 'Phone', value: v.phone },
+                        { label: 'Purpose', value: v.purpose },
+                        { label: 'To meet', value: v.to_meet },
+                        { label: 'Check in', value: v.check_in },
+                        { label: 'Check out', value: v.check_out },
+                        { label: 'ID', value: [v.id_type, v.id_number].filter(Boolean).join(' ') },
+                        { label: 'Notes', value: v.notes },
+                      ]}
+                    />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -150,10 +177,11 @@ function CallsTab() {
             <th className="text-left py-3 px-3 font-medium text-gray-500">Phone</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Purpose</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Duration</th>
+            <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
           </tr></thead>
           <tbody>
-            {isLoading ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
-            : !data?.data?.length ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">No calls</td></tr>
+            {isLoading ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">Loading...</td></tr>
+            : !data?.data?.length ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">No calls</td></tr>
             : data.data.map((c: any) => (
               <tr key={c.id} className="border-b border-gray-100">
                 <td className="py-3 px-3">{c.date}</td>
@@ -162,6 +190,32 @@ function CallsTab() {
                 <td className="py-3 px-3">{c.phone || '-'}</td>
                 <td className="py-3 px-3">{c.purpose || '-'}</td>
                 <td className="py-3 px-3">{c.duration || '-'}</td>
+                <td className="py-3 px-3">
+                  <RecordActions
+                    resource="phone_calls"
+                    id={c.id}
+                    label={c.caller_name || 'Call'}
+                    invalidate={['phone-calls']}
+                    record={c}
+                    fields={[
+                      { key: 'caller_name', label: 'Caller' },
+                      { key: 'phone', label: 'Phone' },
+                      { key: 'purpose', label: 'Purpose' },
+                      { key: 'date', label: 'Date', type: 'date' },
+                      { key: 'duration', label: 'Duration' },
+                      { key: 'notes', label: 'Notes' },
+                    ]}
+                    viewFields={[
+                      { label: 'Date', value: c.date },
+                      { label: 'Type', value: c.call_type },
+                      { label: 'Caller', value: c.caller_name },
+                      { label: 'Phone', value: c.phone },
+                      { label: 'Purpose', value: c.purpose },
+                      { label: 'Duration', value: c.duration },
+                      { label: 'Notes', value: c.notes },
+                    ]}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -210,10 +264,11 @@ function PostalTab() {
             <th className="text-left py-3 px-3 font-medium text-gray-500">Reference</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">From/To</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Description</th>
+            <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
           </tr></thead>
           <tbody>
-            {isLoading ? <tr><td colSpan={5} className="py-12 text-center text-gray-400">Loading...</td></tr>
-            : !data?.data?.length ? <tr><td colSpan={5} className="py-12 text-center text-gray-400">No records</td></tr>
+            {isLoading ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
+            : !data?.data?.length ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">No records</td></tr>
             : data.data.map((r: any) => (
               <tr key={r.id} className="border-b border-gray-100">
                 <td className="py-3 px-3">{r.date}</td>
@@ -221,6 +276,32 @@ function PostalTab() {
                 <td className="py-3 px-3">{r.reference_number || '-'}</td>
                 <td className="py-3 px-3">{r.from_to || '-'}</td>
                 <td className="py-3 px-3">{r.description || '-'}</td>
+                <td className="py-3 px-3">
+                  <RecordActions
+                    resource="postal_records"
+                    id={r.id}
+                    label={r.reference_number || 'Postal'}
+                    invalidate={['postal']}
+                    record={r}
+                    fields={[
+                      { key: 'from_to', label: 'From / To' },
+                      { key: 'reference_number', label: 'Reference' },
+                      { key: 'description', label: 'Description' },
+                      { key: 'date', label: 'Date', type: 'date' },
+                      { key: 'received_by', label: 'Received by' },
+                      { key: 'notes', label: 'Notes' },
+                    ]}
+                    viewFields={[
+                      { label: 'Date', value: r.date },
+                      { label: 'Type', value: r.type },
+                      { label: 'Reference', value: r.reference_number },
+                      { label: 'From / To', value: r.from_to },
+                      { label: 'Description', value: r.description },
+                      { label: 'Received by', value: r.received_by },
+                      { label: 'Notes', value: r.notes },
+                    ]}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>

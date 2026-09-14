@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 
 export default function DepartmentsPage() {
   const qc = useQueryClient();
@@ -55,7 +56,24 @@ export default function DepartmentsPage() {
           <button className="btn-primary" type="submit">Create department</button>
           <ul className="divide-y text-sm">
             {(departments || []).map((d: any) => (
-              <li key={d.id} className="py-2">{d.name}</li>
+              <li key={d.id} className="py-2 flex items-center justify-between gap-2">
+                <span>{d.name}</span>
+                <RecordActions
+                  resource="departments"
+                  id={d.id}
+                  label={d.name}
+                  invalidate={['departments']}
+                  record={d}
+                  fields={[
+                    { key: 'name', label: 'Name' },
+                    { key: 'description', label: 'Description' },
+                  ]}
+                  viewFields={[
+                    { label: 'Name', value: d.name },
+                    { label: 'Description', value: d.description },
+                  ]}
+                />
+              </li>
             ))}
           </ul>
         </form>
@@ -66,7 +84,24 @@ export default function DepartmentsPage() {
           <button className="btn-primary" type="submit">Create designation</button>
           <ul className="divide-y text-sm">
             {(designations || []).map((d: any) => (
-              <li key={d.id} className="py-2">{d.name}</li>
+              <li key={d.id} className="py-2 flex items-center justify-between gap-2">
+                <span>{d.name}</span>
+                <RecordActions
+                  resource="designations"
+                  id={d.id}
+                  label={d.name}
+                  invalidate={['designations']}
+                  record={d}
+                  fields={[
+                    { key: 'name', label: 'Name' },
+                    { key: 'description', label: 'Description' },
+                  ]}
+                  viewFields={[
+                    { label: 'Name', value: d.name },
+                    { label: 'Description', value: d.description },
+                  ]}
+                />
+              </li>
             ))}
           </ul>
         </form>

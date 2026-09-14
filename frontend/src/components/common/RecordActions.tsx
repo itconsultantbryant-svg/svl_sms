@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
+import RecordView, { ViewField } from './RecordView';
 
 const MANAGERS = ['platform_admin', 'institution_admin'];
 const FINANCE = [...MANAGERS, 'accountant', 'finance_officer', 'finance'];
@@ -31,6 +32,7 @@ export default function RecordActions({
   invalidate,
   record,
   fields,
+  viewFields,
 }: {
   resource: string;
   id: string;
@@ -38,13 +40,17 @@ export default function RecordActions({
   invalidate: string[];
   record?: Record<string, any>;
   fields?: Field[];
+  viewFields?: ViewField[];
 }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [viewing, setViewing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
-  if (!id || !canManageRecords(user, resource)) return null;
+  const canManage = canManageRecords(user, resource);
+  if (!id) return null;
+  if (!canManage && !viewFields?.length) return null;
 
   const refresh = () => {
     invalidate.forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));
@@ -81,7 +87,12 @@ export default function RecordActions({
   return (
     <>
       <span className="inline-flex items-center gap-2">
-        {fields?.length ? (
+        {viewFields?.length ? (
+          <button type="button" className="text-primary-600 text-sm" disabled={busy} onClick={() => setViewing(true)}>
+            View
+          </button>
+        ) : null}
+        {canManage && fields?.length ? (
           <button
             type="button"
             className="text-gray-600 text-sm"
@@ -96,8 +107,13 @@ export default function RecordActions({
             Edit
           </button>
         ) : null}
-        <button type="button" className="text-red-600 text-sm" disabled={busy} onClick={remove}>Delete</button>
+        {canManage ? (
+          <button type="button" className="text-red-600 text-sm" disabled={busy} onClick={remove}>Delete</button>
+        ) : null}
       </span>
+      {viewing && viewFields ? (
+        <RecordView title={label || 'Record'} fields={viewFields} onClose={() => setViewing(false)} />
+      ) : null}
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-4 space-y-3">

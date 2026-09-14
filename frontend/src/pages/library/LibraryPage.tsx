@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, BookOpen, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 
 type Tab = 'books' | 'issues' | 'categories';
 
@@ -80,10 +81,11 @@ function BooksTab() {
             <th className="text-center py-3 px-3 font-medium text-gray-500">Total</th>
             <th className="text-center py-3 px-3 font-medium text-gray-500">Available</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Rack</th>
+            <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
           </tr></thead>
           <tbody>
-            {isLoading ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">Loading...</td></tr>
-            : !data?.data?.length ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">No books found</td></tr>
+            {isLoading ? <tr><td colSpan={8} className="py-12 text-center text-gray-400">Loading...</td></tr>
+            : !data?.data?.length ? <tr><td colSpan={8} className="py-12 text-center text-gray-400">No books found</td></tr>
             : data.data.map((b: any) => (
               <tr key={b.id} className="border-b border-gray-100 hover:bg-gray-50">
                 <td className="py-3 px-3 font-medium">{b.title}</td>
@@ -93,6 +95,36 @@ function BooksTab() {
                 <td className="py-3 px-3 text-center">{b.quantity}</td>
                 <td className="py-3 px-3 text-center"><span className={b.available > 0 ? 'text-green-600 font-medium' : 'text-red-600'}>{b.available}</span></td>
                 <td className="py-3 px-3">{b.rack_number || '-'}</td>
+                <td className="py-3 px-3">
+                  <RecordActions
+                    resource="books"
+                    id={b.id}
+                    label={b.title}
+                    invalidate={['books']}
+                    record={b}
+                    fields={[
+                      { key: 'title', label: 'Title' },
+                      { key: 'author', label: 'Author' },
+                      { key: 'isbn', label: 'ISBN' },
+                      { key: 'publisher', label: 'Publisher' },
+                      { key: 'quantity', label: 'Quantity', type: 'number' },
+                      { key: 'available', label: 'Available', type: 'number' },
+                      { key: 'rack_number', label: 'Rack' },
+                      { key: 'price', label: 'Price', type: 'number' },
+                    ]}
+                    viewFields={[
+                      { label: 'Title', value: b.title },
+                      { label: 'Author', value: b.author },
+                      { label: 'Category', value: b.category_name },
+                      { label: 'ISBN', value: b.isbn },
+                      { label: 'Publisher', value: b.publisher },
+                      { label: 'Quantity', value: b.quantity },
+                      { label: 'Available', value: b.available },
+                      { label: 'Rack', value: b.rack_number },
+                      { label: 'Price', value: b.price },
+                    ]}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -180,9 +212,34 @@ function IssuesTab() {
                 <td className="py-3 px-3">{issue.due_date}</td>
                 <td className="py-3 px-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${issue.status === 'issued' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{issue.status}</span></td>
                 <td className="py-3 px-3">
-                  {issue.status === 'issued' && (
-                    <button onClick={() => returnMutation.mutate({ id: issue.id, return_date: new Date().toISOString().split('T')[0] })} className="text-primary-600 hover:underline text-xs font-medium"><RotateCcw size={14} className="inline mr-1" />Return</button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {issue.status === 'issued' && (
+                      <button onClick={() => returnMutation.mutate({ id: issue.id, return_date: new Date().toISOString().split('T')[0] })} className="text-primary-600 hover:underline text-xs font-medium"><RotateCcw size={14} className="inline mr-1" />Return</button>
+                    )}
+                    <RecordActions
+                      resource="book_issues"
+                      id={issue.id}
+                      label={issue.book_title}
+                      invalidate={['book-issues', 'books']}
+                      record={issue}
+                      fields={[
+                        { key: 'due_date', label: 'Due date', type: 'date' },
+                        { key: 'status', label: 'Status' },
+                        { key: 'fine_amount', label: 'Fine', type: 'number' },
+                        { key: 'notes', label: 'Notes' },
+                      ]}
+                      viewFields={[
+                        { label: 'Book', value: issue.book_title },
+                        { label: 'Issued to', value: issue.member_name || issue.issued_to },
+                        { label: 'Issue date', value: issue.issue_date },
+                        { label: 'Due date', value: issue.due_date },
+                        { label: 'Return date', value: issue.return_date },
+                        { label: 'Status', value: issue.status },
+                        { label: 'Fine', value: issue.fine_amount },
+                        { label: 'Notes', value: issue.notes },
+                      ]}
+                    />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -219,8 +276,29 @@ function CategoriesTab() {
       </div>
       <div className="card">
         <table className="w-full text-sm">
-          <thead><tr className="border-b bg-gray-50"><th className="text-left py-3 px-3 font-medium text-gray-500">Name</th></tr></thead>
-          <tbody>{categories?.map(c => <tr key={c.id} className="border-b border-gray-100"><td className="py-3 px-3">{c.name}</td></tr>)}</tbody>
+          <thead><tr className="border-b bg-gray-50"><th className="text-left py-3 px-3 font-medium text-gray-500">Name</th><th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th></tr></thead>
+          <tbody>{categories?.map(c => (
+            <tr key={c.id} className="border-b border-gray-100">
+              <td className="py-3 px-3">{c.name}</td>
+              <td className="py-3 px-3">
+                <RecordActions
+                  resource="book_categories"
+                  id={c.id}
+                  label={c.name}
+                  invalidate={['book-categories']}
+                  record={c}
+                  fields={[
+                    { key: 'name', label: 'Name' },
+                    { key: 'description', label: 'Description' },
+                  ]}
+                  viewFields={[
+                    { label: 'Name', value: c.name },
+                    { label: 'Description', value: c.description },
+                  ]}
+                />
+              </td>
+            </tr>
+          ))}</tbody>
         </table>
       </div>
     </div>

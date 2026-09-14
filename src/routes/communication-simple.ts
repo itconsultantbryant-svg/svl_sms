@@ -270,6 +270,44 @@ communicationRouter.post('/announcements', authorize('platform_admin', 'institut
   }
 });
 
+communicationRouter.put('/announcements/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  try {
+    const { title, content, type, priority, audience, is_published, expires_at } = req.body;
+    const db = getDatabase();
+    const result = db.prepare(`
+      UPDATE announcements SET
+        title = COALESCE(?, title),
+        content = COALESCE(?, content),
+        type = COALESCE(?, type),
+        priority = COALESCE(?, priority),
+        audience = COALESCE(?, audience),
+        is_published = COALESCE(?, is_published),
+        published_at = CASE WHEN COALESCE(?, is_published) = 1 AND published_at IS NULL THEN datetime('now') ELSE published_at END,
+        expires_at = COALESCE(?, expires_at),
+        updated_at = datetime('now')
+      WHERE id = ? AND institution_id = ?
+    `).run(
+      title ?? null,
+      content ?? null,
+      type ?? null,
+      priority ?? null,
+      audience ?? null,
+      is_published === undefined ? null : (is_published ? 1 : 0),
+      is_published === undefined ? null : (is_published ? 1 : 0),
+      expires_at ?? null,
+      req.params.id,
+      req.institution_id
+    );
+    if (!result.changes) {
+      res.status(404).json({ error: 'Announcement not found' });
+      return;
+    }
+    res.json({ message: 'Announcement updated' });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 communicationRouter.delete('/announcements/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   try {
     const db = getDatabase();
@@ -312,6 +350,39 @@ communicationRouter.post('/templates', authorize('platform_admin', 'institution_
     res.status(201).json({ id, message: 'Template created' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+communicationRouter.put('/templates/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  try {
+    const { name, type, event, subject, body, is_active } = req.body;
+    const db = getDatabase();
+    const result = db.prepare(`
+      UPDATE notification_templates SET
+        name = COALESCE(?, name),
+        type = COALESCE(?, type),
+        event = COALESCE(?, event),
+        subject = COALESCE(?, subject),
+        body = COALESCE(?, body),
+        is_active = COALESCE(?, is_active)
+      WHERE id = ? AND institution_id = ?
+    `).run(
+      name ?? null,
+      type ?? null,
+      event ?? null,
+      subject ?? null,
+      body ?? null,
+      is_active === undefined ? null : (is_active ? 1 : 0),
+      req.params.id,
+      req.institution_id
+    );
+    if (!result.changes) {
+      res.status(404).json({ error: 'Template not found' });
+      return;
+    }
+    res.json({ message: 'Template updated' });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
   }
 });
 

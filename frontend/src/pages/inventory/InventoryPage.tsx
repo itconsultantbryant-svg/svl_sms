@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
+import RecordActions from '../../components/common/RecordActions';
 
 type Tab = 'items' | 'transactions' | 'categories';
 
@@ -77,10 +78,11 @@ function ItemsTab() {
             <th className="text-left py-3 px-3 font-medium text-gray-500">Unit</th>
             <th className="text-right py-3 px-3 font-medium text-gray-500">Price</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">Location</th>
+            <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
           </tr></thead>
           <tbody>
-            {isLoading ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">Loading...</td></tr>
-            : !data?.data?.length ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">No items</td></tr>
+            {isLoading ? <tr><td colSpan={8} className="py-12 text-center text-gray-400">Loading...</td></tr>
+            : !data?.data?.length ? <tr><td colSpan={8} className="py-12 text-center text-gray-400">No items</td></tr>
             : data.data.map((item: any) => (
               <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                 <td className="py-3 px-3 font-medium">{item.name}</td>
@@ -91,8 +93,36 @@ function ItemsTab() {
                   {item.quantity <= item.min_quantity && <AlertTriangle size={14} className="inline ml-1 text-red-500" />}
                 </td>
                 <td className="py-3 px-3">{item.unit}</td>
-                <td className="py-3 px-3 text-right">${item.unit_price.toFixed(2)}</td>
+                <td className="py-3 px-3 text-right">${Number(item.unit_price || 0).toFixed(2)}</td>
                 <td className="py-3 px-3">{item.location || '-'}</td>
+                <td className="py-3 px-3">
+                  <RecordActions
+                    resource="inventory_items"
+                    id={item.id}
+                    label={item.name}
+                    invalidate={['inv-items', 'inv-items-all']}
+                    record={item}
+                    fields={[
+                      { key: 'name', label: 'Name' },
+                      { key: 'sku', label: 'SKU' },
+                      { key: 'quantity', label: 'Quantity', type: 'number' },
+                      { key: 'min_quantity', label: 'Min quantity', type: 'number' },
+                      { key: 'unit', label: 'Unit' },
+                      { key: 'unit_price', label: 'Unit price', type: 'number' },
+                      { key: 'location', label: 'Location' },
+                    ]}
+                    viewFields={[
+                      { label: 'Name', value: item.name },
+                      { label: 'Category', value: item.category_name },
+                      { label: 'SKU', value: item.sku },
+                      { label: 'Quantity', value: item.quantity },
+                      { label: 'Min quantity', value: item.min_quantity },
+                      { label: 'Unit', value: item.unit },
+                      { label: 'Price', value: item.unit_price },
+                      { label: 'Location', value: item.location },
+                    ]}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -157,10 +187,11 @@ function TransactionsTab() {
             <th className="text-center py-3 px-3 font-medium text-gray-500">Qty</th>
             <th className="text-right py-3 px-3 font-medium text-gray-500">Total</th>
             <th className="text-left py-3 px-3 font-medium text-gray-500">By</th>
+            <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
           </tr></thead>
           <tbody>
-            {isLoading ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
-            : !data?.data?.length ? <tr><td colSpan={6} className="py-12 text-center text-gray-400">No transactions</td></tr>
+            {isLoading ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">Loading...</td></tr>
+            : !data?.data?.length ? <tr><td colSpan={7} className="py-12 text-center text-gray-400">No transactions</td></tr>
             : data.data.map((t: any) => (
               <tr key={t.id} className="border-b border-gray-100">
                 <td className="py-3 px-3">{t.date}</td>
@@ -169,6 +200,30 @@ function TransactionsTab() {
                 <td className="py-3 px-3 text-center">{t.quantity}</td>
                 <td className="py-3 px-3 text-right">${Number(t.total_price || 0).toFixed(2)}</td>
                 <td className="py-3 px-3 text-gray-500">{t.created_by_name || '-'}</td>
+                <td className="py-3 px-3">
+                  <RecordActions
+                    resource="stock_transactions"
+                    id={t.id}
+                    label={`${t.item_name} ${t.type}`}
+                    invalidate={['inv-transactions', 'inv-items']}
+                    record={t}
+                    fields={[
+                      { key: 'vendor', label: 'Vendor' },
+                      { key: 'reference', label: 'Reference' },
+                      { key: 'notes', label: 'Notes' },
+                    ]}
+                    viewFields={[
+                      { label: 'Date', value: t.date },
+                      { label: 'Item', value: t.item_name },
+                      { label: 'Type', value: t.type },
+                      { label: 'Quantity', value: t.quantity },
+                      { label: 'Total', value: t.total_price },
+                      { label: 'Vendor', value: t.vendor },
+                      { label: 'Notes', value: t.notes },
+                      { label: 'By', value: t.created_by_name },
+                    ]}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -205,8 +260,29 @@ function CategoriesTab() {
       </div>
       <div className="card">
         <table className="w-full text-sm">
-          <thead><tr className="border-b bg-gray-50"><th className="text-left py-3 px-3 font-medium text-gray-500">Name</th></tr></thead>
-          <tbody>{categories?.map(c => <tr key={c.id} className="border-b border-gray-100"><td className="py-3 px-3">{c.name}</td></tr>)}</tbody>
+          <thead><tr className="border-b bg-gray-50"><th className="text-left py-3 px-3 font-medium text-gray-500">Name</th><th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th></tr></thead>
+          <tbody>{categories?.map(c => (
+            <tr key={c.id} className="border-b border-gray-100">
+              <td className="py-3 px-3">{c.name}</td>
+              <td className="py-3 px-3">
+                <RecordActions
+                  resource="inventory_categories"
+                  id={c.id}
+                  label={c.name}
+                  invalidate={['inv-categories']}
+                  record={c}
+                  fields={[
+                    { key: 'name', label: 'Name' },
+                    { key: 'description', label: 'Description' },
+                  ]}
+                  viewFields={[
+                    { label: 'Name', value: c.name },
+                    { label: 'Description', value: c.description },
+                  ]}
+                />
+              </td>
+            </tr>
+          ))}</tbody>
         </table>
       </div>
     </div>

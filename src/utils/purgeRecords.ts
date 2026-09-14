@@ -55,6 +55,15 @@ const OWNED_CHILDREN: Record<string, string[]> = {
   lesson_plans: ['lesson_plan_recipients'],
   timetable_periods: ['timetable_entries'],
   fee_structures: ['invoice_items'],
+  inventory_items: ['stock_transactions'],
+  inventory_categories: ['inventory_items'],
+  book_categories: ['books'],
+  books: ['book_issues'],
+  vehicles: ['transport_routes', 'student_transport'],
+  transport_routes: ['route_stops', 'student_transport'],
+  sms_messages: ['sms_recipients'],
+  email_messages: ['email_recipients'],
+  certificate_templates: ['certificates'],
 };
 
 function tableHasId(db: Database.Database, table: string): boolean {

@@ -4,6 +4,7 @@ import { Plus, FileText, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { openPrintDocument } from '../../utils/printDocument';
+import RecordActions from '../../components/common/RecordActions';
 
 type Tab = 'certificates' | 'templates' | 'id-cards';
 
@@ -104,7 +105,26 @@ function CertificatesTab() {
                 <td className="py-3 px-3 capitalize">{c.template_type}</td>
                 <td className="py-3 px-3">{c.issued_date}</td>
                 <td className="py-3 px-3">
-                  <button onClick={async () => { const res = await api.get(`/certificates/${c.id}`); setViewCert(res.data); }} className="text-primary-600 hover:underline text-xs font-medium"><FileText size={14} className="inline mr-1" />View</button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={async () => { const res = await api.get(`/certificates/${c.id}`); setViewCert(res.data); }} className="text-primary-600 hover:underline text-xs font-medium"><FileText size={14} className="inline mr-1" />View</button>
+                    <RecordActions
+                      resource="certificates"
+                      id={c.id}
+                      label={c.certificate_number}
+                      invalidate={['certificates']}
+                      record={c}
+                      fields={[
+                        { key: 'issued_date', label: 'Issued date', type: 'date' },
+                      ]}
+                      viewFields={[
+                        { label: 'Number', value: c.certificate_number },
+                        { label: 'Student', value: `${c.first_name || ''} ${c.last_name || ''}`.trim() },
+                        { label: 'Template', value: c.template_name },
+                        { label: 'Type', value: c.template_type },
+                        { label: 'Issued', value: c.issued_date },
+                      ]}
+                    />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -164,6 +184,29 @@ function TemplatesTab() {
             <h3 className="font-medium text-gray-900">{t.name}</h3>
             <p className="text-sm text-gray-500 capitalize mt-1">{t.type}</p>
             <p className="text-xs text-gray-400 mt-2 line-clamp-3">{t.content}</p>
+            <div className="mt-3">
+              <RecordActions
+                resource="certificate_templates"
+                id={t.id}
+                label={t.name}
+                invalidate={['cert-templates']}
+                record={t}
+                fields={[
+                  { key: 'name', label: 'Name' },
+                  { key: 'type', label: 'Type' },
+                  { key: 'content', label: 'Content' },
+                  { key: 'header', label: 'Header' },
+                  { key: 'footer', label: 'Footer' },
+                ]}
+                viewFields={[
+                  { label: 'Name', value: t.name },
+                  { label: 'Type', value: t.type },
+                  { label: 'Content', value: t.content },
+                  { label: 'Header', value: t.header },
+                  { label: 'Footer', value: t.footer },
+                ]}
+              />
+            </div>
           </div>
         ))}
       </div>
