@@ -258,12 +258,10 @@ function buildNavigation(homePath: string): MenuItem[] {
     { name: 'My Students', href: '/teacher/students', icon: UserCheck, userTypes: ['teacher'] },
     { name: 'My Gradebook', href: '/teacher/gradebook', icon: ClipboardList, userTypes: ['teacher'] },
     { name: 'Lesson Plans', href: '/teacher/lesson-plans', icon: BookOpen, userTypes: ['teacher'] },
-    { name: 'My Grades', href: '/student/grades', icon: TrendingUp, userTypes: ['student'] },
-    { name: 'My Fees', href: '/student/fees', icon: DollarSign, userTypes: ['student'] },
+    { name: 'Gradesheet', href: '/student/grades', icon: TrendingUp, userTypes: ['student'] },
     { name: 'My Assignments', href: '/student/assignments', icon: CheckSquare, userTypes: ['student'] },
     { name: 'My Attendance', href: '/student/attendance', icon: Calendar, userTypes: ['student'] },
     { name: 'My Children', href: '/parent/children', icon: Users, userTypes: ['parent'] },
-    { name: 'Fees & Payments', href: '/parent/fees', icon: DollarSign, userTypes: ['parent'] },
     { name: 'Change Password', href: '/account/password', icon: Settings, userTypes: ['platform_admin', 'institution_admin', 'teacher', 'student', 'parent', 'staff', 'branch_admin'] },
   ];
 }
@@ -341,6 +339,11 @@ export default function DynamicSidebar({ open, onClose }: SidebarProps) {
       return false;
     }
     if (isAdmin && (item.href === '/teacher/gradebook' || item.href === '/teacher/lesson-plans')) {
+      return false;
+    }
+    const isPortalUser = (user.user_type === 'student' || user.user_type === 'parent') && !isAdmin;
+    const hiddenFromPortal = ['/fees', '/fees/invoices', '/fees/payments', '/accounts', '/payroll', '/gradebook', '/teacher/gradebook', '/student/fees', '/parent/fees', '/finance/dashboard'];
+    if (isPortalUser && (item.name === 'Finance' || item.name === 'Gradebook' || hiddenFromPortal.includes(item.href || ''))) {
       return false;
     }
 

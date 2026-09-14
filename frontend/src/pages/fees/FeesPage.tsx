@@ -46,7 +46,15 @@ export default function FeesPage() {
 
   const createStructMutation = useMutation({
     mutationFn: (data: any) => api.post('/fees/structures', data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['fee-structures'] }); toast.success('Fee structure created'); setShowForm(false); setStructForm({ fee_type_id: '', session_id: '', term_id: '', class_id: '', amount: '', due_date: '' }); },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['fee-structures'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-finance'] });
+      toast.success(res?.data?.message || 'Fee assigned to the class');
+      setShowForm(false);
+      setStructForm({ fee_type_id: '', session_id: '', term_id: '', class_id: '', amount: '', due_date: '' });
+    },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed'),
   });
 
@@ -55,7 +63,7 @@ export default function FeesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Fee Management</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage fee types and structures</p>
+          <p className="text-sm text-gray-500 mt-1">A class fee is billed to every student enrolled in that class</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary">
           <Plus size={16} className="mr-2" /> {tab === 'types' ? 'Add Category' : 'Add Structure'}

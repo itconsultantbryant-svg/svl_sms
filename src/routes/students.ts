@@ -5,6 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId, generateAdmissionNumber, generateDefaultPassword, paginate, buildSearchQuery } from '../utils/helpers';
 import { ensureUserRole, ensurePortalRole } from '../utils/userAccess';
+import { assignClassFees } from '../utils/assignClassFees';
 
 export const studentsRouter = Router();
 
@@ -282,13 +283,30 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
     return;
   }
 
+  let feesAssigned = 0;
+  if (req.institution_id && class_id) {
+    try {
+      feesAssigned = assignClassFees({
+        institutionId: req.institution_id,
+        createdBy: req.user?.id,
+        studentId: id,
+        classId: class_id,
+      }).items;
+    } catch (err) {
+      console.error('Could not assign class fees to new student:', err);
+    }
+  }
+
   res.status(201).json({
     id,
     admission_number,
     username: admission_number,
     temporary_password,
     parent_credentials: parentCredentials,
-    message: 'Student admitted successfully',
+    fees_assigned: feesAssigned,
+    message: feesAssigned
+      ? `Student admitted and billed for ${feesAssigned} class fee${feesAssigned === 1 ? '' : 's'}`
+      : 'Student admitted successfully',
   });
 });
 
@@ -341,6 +359,19 @@ studentsRouter.put('/:id', (req: AuthRequest, res: Response) => {
         updated_at = datetime('now')
       WHERE linked_entity_type = 'student' AND linked_entity_id = ?
     `).run(photo || null, first_name || null, last_name || null, id);
+  }
+
+  if (req.institution_id && class_id) {
+    try {
+      assignClassFees({
+        institutionId: req.institution_id,
+        createdBy: req.user?.id,
+        studentId: id,
+        classId: class_id,
+      });
+    } catch (err) {
+      console.error('Could not assign class fees after student update:', err);
+    }
   }
 
   res.json({ message: 'Student updated successfully' });

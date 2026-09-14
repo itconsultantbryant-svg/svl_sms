@@ -3,6 +3,7 @@ import { getDatabase } from '../database/init';
 import { AuthRequest, authorize } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId, paginate } from '../utils/helpers';
+import { assignClassFees } from '../utils/assignClassFees';
 
 function normalizePaymentMethod(method?: string): string {
   const key = String(method || 'cash').toLowerCase().replace(/\s+/g, '_');
@@ -107,7 +108,15 @@ feesRouter.post('/structures', authorize('platform_admin', 'institution_admin', 
   const db = getDatabase();
   const id = generateId();
   db.prepare(`INSERT INTO fee_structures (id, institution_id, fee_type_id, session_id, term_id, branch_id, class_id, amount, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.institution_id, fee_type_id, session_id, term_id || null, branch_id || null, class_id, amount, due_date || null);
-  res.status(201).json({ id, message: 'Fee structure created successfully' });
+  const assigned = assignClassFees({
+    institutionId: req.institution_id,
+    createdBy: req.user?.id,
+    structureId: id,
+  });
+  const message = assigned.students
+    ? `Fee assigned to ${assigned.students} student${assigned.students === 1 ? '' : 's'} in this class`
+    : 'Fee saved. No active students are enrolled in that class yet — they will be billed when they join the class';
+  res.status(201).json({ id, ...assigned, message });
 });
 
 feesRouter.put('/structures/:id', authorize('platform_admin', 'institution_admin', 'accountant', 'finance_officer', 'finance'), (req: AuthRequest, res: Response) => {
@@ -139,6 +148,13 @@ feesRouter.get('/invoices', (req: AuthRequest, res: Response) => {
   const db = getDatabase();
   const { page = '1', limit = '20', student_id, status, session_id, class_id } = req.query as any;
   const { limit: lim, offset } = paginate(parseInt(page), parseInt(limit));
+  if (req.institution_id) {
+    try {
+      assignClassFees({ institutionId: req.institution_id, createdBy: req.user?.id });
+    } catch (err) {
+      console.error('Fee assignment sync failed:', err);
+    }
+  }
 
   let where = 'WHERE i.institution_id = ?';
   const params: any[] = [req.institution_id];
@@ -200,72 +216,22 @@ feesRouter.get('/invoices/:id', (req: AuthRequest, res: Response) => {
 
 feesRouter.post('/invoices/generate', authorize('platform_admin', 'institution_admin', 'accountant', 'finance_officer', 'finance'), (req: AuthRequest, res: Response) => {
   try {
-    const { student_id, session_id, term_id, due_date } = req.body;
-    if (!student_id || !session_id) {
-      res.status(400).json({ error: 'Student and session are required' });
+    const { student_id, class_id } = req.body;
+    if (!req.institution_id) {
+      res.status(400).json({ error: 'Select a school first' });
       return;
     }
-
-    const db = getDatabase();
-    const student = db.prepare('SELECT id, class_id, branch_id FROM students WHERE id = ? AND institution_id = ?').get(student_id, req.institution_id) as any;
-    if (!student) { res.status(404).json({ error: 'Student not found' }); return; }
-
-    let structureWhere = 'WHERE fs.institution_id = ? AND fs.session_id = ? AND fs.class_id = ? AND fs.is_active = 1';
-    const structureParams: any[] = [req.institution_id, session_id, student.class_id];
-    if (term_id) { structureWhere += ' AND (fs.term_id = ? OR fs.term_id IS NULL)'; structureParams.push(term_id); }
-
-    const structures = db.prepare(`
-      SELECT fs.*, ft.name as fee_type_name FROM fee_structures fs
-      JOIN fee_types ft ON fs.fee_type_id = ft.id
-      ${structureWhere}
-    `).all(...structureParams) as any[];
-
-    if (structures.length === 0) {
-      res.status(400).json({ error: 'No fee structures found for this student class/session' });
-      return;
-    }
-
-    const discounts = db.prepare(`
-      SELECT fd.* FROM fee_discounts fd
-      JOIN student_discounts sd ON fd.id = sd.discount_id
-      WHERE sd.student_id = ? AND sd.session_id = ? AND fd.institution_id = ?
-    `).all(student_id, session_id, req.institution_id) as any[];
-
-    const invoiceId = generateId();
-    const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}`;
-
-    const transaction = db.transaction(() => {
-      let totalAmount = 0;
-      let totalDiscount = 0;
-
-      const items: { id: string; feeTypeId: string; desc: string; amount: number; discount: number; net: number }[] = [];
-      for (const fs of structures) {
-        let itemDiscount = 0;
-        for (const d of discounts) {
-          if (d.type === 'percentage') itemDiscount += (fs.amount * d.value / 100);
-          else itemDiscount += d.value;
-        }
-        itemDiscount = Math.min(itemDiscount, fs.amount);
-        const netAmount = fs.amount - itemDiscount;
-        totalAmount += fs.amount;
-        totalDiscount += itemDiscount;
-        items.push({ id: generateId(), feeTypeId: fs.fee_type_id, desc: fs.fee_type_name, amount: fs.amount, discount: itemDiscount, net: netAmount });
-      }
-
-      const balance = totalAmount - totalDiscount;
-      db.prepare(`
-        INSERT INTO invoices (id, institution_id, invoice_number, student_id, session_id, term_id, total_amount, discount_amount, paid_amount, balance, due_date, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
-      `).run(invoiceId, req.institution_id, invoiceNumber, student_id, session_id, term_id || null, totalAmount, totalDiscount, balance, due_date || null, req.user?.id || null);
-
-      const insertItem = db.prepare(`INSERT INTO invoice_items (id, institution_id, invoice_id, fee_type_id, description, amount, discount, net_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-      for (const item of items) {
-        insertItem.run(item.id, req.institution_id, invoiceId, item.feeTypeId, item.desc, item.amount, item.discount, item.net);
-      }
+    const assigned = assignClassFees({
+      institutionId: req.institution_id,
+      createdBy: req.user?.id,
+      studentId: student_id || null,
+      classId: class_id || null,
     });
-
-    transaction();
-    res.status(201).json({ id: invoiceId, invoice_number: invoiceNumber, message: 'Invoice generated successfully' });
+    if (!assigned.items && !assigned.students) {
+      res.status(400).json({ error: 'No unbilled class fees found for the enrolled students' });
+      return;
+    }
+    res.status(201).json({ ...assigned, message: `Invoices updated for ${assigned.students} student${assigned.students === 1 ? '' : 's'}` });
   } catch (err: any) {
     console.error('Invoice generation error:', err);
     res.status(500).json({ error: err.message || 'Internal server error' });

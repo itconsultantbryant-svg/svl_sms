@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { getDatabase } from '../database/init';
 import { AuthRequest } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
+import { assignClassFees } from '../utils/assignClassFees';
 
 export const dashboardRouter = Router();
 
@@ -205,6 +206,10 @@ dashboardRouter.get('/finance', (req: AuthRequest, res: Response) => {
   const safe = (fn: () => any, fallback: any = 0) => {
     try { return fn(); } catch { return fallback; }
   };
+
+  if (iid) {
+    try { assignClassFees({ institutionId: iid, createdBy: req.user?.id }); } catch { /* keep dashboard readable */ }
+  }
 
   const totalInvoiced = safe(() => (db.prepare(`SELECT COALESCE(SUM(total_amount),0) as v FROM invoices WHERE institution_id = ?`).get(iid) as any).v);
   const collectedAll = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE institution_id = ? AND (status = 'completed' OR status IS NULL)`).get(iid) as any).v);

@@ -51,6 +51,7 @@ export function migrateInstitutionBranding(database?: Database.Database): void {
   ensureColumn(target, 'institutions', 'accent_color', "TEXT DEFAULT '#f59e0b'");
   ensureColumn(target, 'users', 'extra_permissions', 'TEXT');
   ensureColumn(target, 'students', 'is_active', 'INTEGER DEFAULT 1');
+  ensureColumn(target, 'invoice_items', 'fee_structure_id', 'TEXT');
   try {
     target.prepare(`UPDATE students SET is_active = CASE WHEN status IS NULL OR status = 'active' THEN 1 ELSE 0 END`).run();
   } catch {

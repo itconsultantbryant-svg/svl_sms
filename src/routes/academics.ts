@@ -258,20 +258,70 @@ academicsRouter.get('/subjects', (req: AuthRequest, res: Response) => {
 });
 
 academicsRouter.post('/subjects', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
-  const { name, code, description, type, branch_id } = req.body;
-  if (!name) {
-    res.status(400).json({ error: 'Subject name is required' });
+  const { name, code, description, type, branch_id, class_id, session_id, subjects } = req.body;
+  const rows = Array.isArray(subjects) && subjects.length
+    ? subjects
+    : name
+      ? [{ name, code, type, description }]
+      : [];
+  const named = rows
+    .map((row: any) => ({
+      name: String(row?.name || '').trim(),
+      code: row?.code ? String(row.code).trim() : null,
+      type: row?.type || type || 'theory',
+      description: row?.description || description || null,
+    }))
+    .filter((row: { name: string }) => row.name);
+  if (!named.length) {
+    res.status(400).json({ error: 'Enter at least one subject name' });
+    return;
+  }
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school before adding subjects' });
     return;
   }
 
   const db = getDatabase();
-  const id = generateId();
-  db.prepare(`
+  const current = db.prepare(`
+    SELECT id FROM academic_sessions WHERE institution_id = ? AND is_current = 1 LIMIT 1
+  `).get(req.institution_id) as { id: string } | undefined;
+  const sessionId = session_id || current?.id || null;
+  const ids: string[] = [];
+
+  const insertSubject = db.prepare(`
     INSERT INTO subjects (id, institution_id, branch_id, name, code, description, type)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, req.institution_id, branch_id || null, name, code || null, description || null, type || 'theory');
+  `);
+  const alreadyAssigned = db.prepare(`
+    SELECT id FROM class_subjects
+    WHERE institution_id = ? AND class_id = ? AND subject_id = ?
+      AND ((session_id IS NULL AND ? IS NULL) OR session_id = ?)
+  `);
+  const assign = db.prepare(`
+    INSERT INTO class_subjects (id, institution_id, class_id, subject_id, session_id)
+    VALUES (?, ?, ?, ?, ?)
+  `);
 
-  res.status(201).json({ id, message: 'Subject created successfully' });
+  const transaction = db.transaction(() => {
+    for (const row of named) {
+      const id = generateId();
+      insertSubject.run(id, req.institution_id, branch_id || null, row.name, row.code, row.description, row.type);
+      ids.push(id);
+      if (class_id && !alreadyAssigned.get(req.institution_id, class_id, id, sessionId, sessionId)) {
+        assign.run(generateId(), req.institution_id, class_id, id, sessionId);
+      }
+    }
+  });
+  transaction();
+
+  res.status(201).json({
+    id: ids[0],
+    ids,
+    count: ids.length,
+    message: class_id
+      ? `${ids.length} subject${ids.length === 1 ? '' : 's'} assigned to the class`
+      : 'Subject created successfully',
+  });
 });
 
 academicsRouter.put('/subjects/:id', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
@@ -290,25 +340,60 @@ academicsRouter.put('/subjects/:id', authorize('platform_admin', 'institution_ad
 });
 
 // Class-Subject mapping
+academicsRouter.get('/class-subjects', (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  const { class_id } = req.query as any;
+  let where = 'WHERE cs.institution_id = ?';
+  const params: any[] = [req.institution_id];
+  if (class_id) {
+    where += ' AND cs.class_id = ?';
+    params.push(class_id);
+  }
+  const rows = db.prepare(`
+    SELECT cs.id, cs.class_id, cs.subject_id, cs.session_id,
+      c.name as class_name, sub.name as subject_name, sub.code as subject_code, sess.name as session_name
+    FROM class_subjects cs
+    LEFT JOIN classes c ON c.id = cs.class_id
+    LEFT JOIN subjects sub ON sub.id = cs.subject_id
+    LEFT JOIN academic_sessions sess ON sess.id = cs.session_id
+    ${where}
+    ORDER BY c.name, sub.name
+  `).all(...params);
+  res.json(rows);
+});
+
 academicsRouter.post('/class-subjects', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
   const { class_id, subject_ids, session_id } = req.body;
-  if (!class_id || !subject_ids || !session_id) {
-    res.status(400).json({ error: 'Class, subjects, and session are required' });
+  const ids = Array.isArray(subject_ids) ? subject_ids.filter(Boolean) : [];
+  if (!class_id || !ids.length) {
+    res.status(400).json({ error: 'Select a class and at least one subject' });
     return;
   }
 
   const db = getDatabase();
+  const current = db.prepare(`
+    SELECT id FROM academic_sessions WHERE institution_id = ? AND is_current = 1 LIMIT 1
+  `).get(req.institution_id) as { id: string } | undefined;
+  const sessionId = session_id || current?.id || null;
+  const exists = db.prepare(`
+    SELECT id FROM class_subjects
+    WHERE institution_id = ? AND class_id = ? AND subject_id = ?
+      AND ((session_id IS NULL AND ? IS NULL) OR session_id = ?)
+  `);
   const insert = db.prepare(
-    'INSERT OR IGNORE INTO class_subjects (id, institution_id, class_id, subject_id, session_id) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO class_subjects (id, institution_id, class_id, subject_id, session_id) VALUES (?, ?, ?, ?, ?)'
   );
+  let added = 0;
   const transaction = db.transaction(() => {
-    for (const subjectId of subject_ids) {
-      insert.run(generateId(), req.institution_id, class_id, subjectId, session_id);
+    for (const subjectId of ids) {
+      if (exists.get(req.institution_id, class_id, subjectId, sessionId, sessionId)) continue;
+      insert.run(generateId(), req.institution_id, class_id, subjectId, sessionId);
+      added += 1;
     }
   });
   transaction();
 
-  res.status(201).json({ message: 'Subjects assigned to class successfully' });
+  res.status(201).json({ count: added, message: `${added} subject${added === 1 ? '' : 's'} assigned to the class` });
 });
 
 // Departments

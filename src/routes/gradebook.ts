@@ -3,6 +3,7 @@ import { getDatabase } from '../database/init';
 import { AuthRequest, authorize } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId, paginate } from '../utils/helpers';
+import { buildGradesheet } from '../utils/gradesheet';
 
 export const gradebookRouter = Router();
 
@@ -205,6 +206,52 @@ gradebookRouter.get('/pending', authorize('platform_admin', 'institution_admin')
     ORDER BY g.submitted_at DESC
   `).all();
   res.json({ data: rows });
+});
+
+function resolveStudentId(req: AuthRequest, studentId: string): string | null {
+  const db = getDatabase();
+  if (studentId === 'me') {
+    const student = db.prepare(`
+      SELECT id FROM students
+      WHERE institution_id = ? AND (
+        user_id = ?
+        OR id = (SELECT linked_entity_id FROM users WHERE id = ? AND linked_entity_type = 'student')
+        OR admission_number = (SELECT username FROM users WHERE id = ?)
+      )
+    `).get(req.institution_id, req.user!.id, req.user!.id, req.user!.id) as { id: string } | undefined;
+    return student?.id || null;
+  }
+  const isAdmin = req.user?.user_type === 'platform_admin' || req.user?.user_type === 'institution_admin';
+  const isSelf = db.prepare(`
+    SELECT id FROM students WHERE id = ? AND institution_id = ? AND (
+      user_id = ? OR admission_number = (SELECT username FROM users WHERE id = ?)
+      OR id = (SELECT linked_entity_id FROM users WHERE id = ? AND linked_entity_type = 'student')
+    )
+  `).get(studentId, req.institution_id, req.user!.id, req.user!.id, req.user!.id);
+  const isParent = db.prepare(`
+    SELECT id FROM parent_students WHERE parent_id = ? AND student_id = ?
+  `).get(req.user!.id, studentId);
+  if (!isAdmin && !isSelf && !isParent) return null;
+  const exists = db.prepare('SELECT id FROM students WHERE id = ? AND institution_id = ?').get(studentId, req.institution_id) as { id: string } | undefined;
+  return exists?.id || null;
+}
+
+gradebookRouter.get('/gradesheet/:studentId', (req: AuthRequest, res: Response) => {
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school first' });
+    return;
+  }
+  const studentId = resolveStudentId(req, req.params.studentId);
+  if (!studentId) {
+    res.status(403).json({ error: 'Not allowed to view this gradesheet' });
+    return;
+  }
+  const sheet = buildGradesheet(req.institution_id, studentId);
+  if (!sheet) {
+    res.status(404).json({ error: 'Student not found' });
+    return;
+  }
+  res.json(sheet);
 });
 
 gradebookRouter.get('/student/me', authorize('student'), (req: AuthRequest, res: Response) => {

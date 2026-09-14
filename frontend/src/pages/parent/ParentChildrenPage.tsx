@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { Users } from 'lucide-react';
 import api from '../../utils/api';
-import { escapeHtml, openPrintDocument } from '../../utils/printDocument';
+import { printGradesheet } from '../../components/gradesheet/GradesheetView';
 
 export default function ParentChildrenPage() {
   const { data, isLoading, error } = useQuery({
@@ -65,24 +64,17 @@ export default function ParentChildrenPage() {
                   <p className="text-xs text-gray-400 capitalize">Relationship: {child.relationship}</p>
                 )}
               </div>
-              <div className="mt-3 flex gap-3 text-sm">
+              <div className="mt-3">
                 <button
                   type="button"
-                  className="text-primary-600"
+                  className="text-sm text-primary-600"
                   onClick={async () => {
-                    const res = await api.get(`/gradebook/student/${child.id}`);
-                    const rows = res.data.data || [];
-                    openPrintDocument(`${child.first_name} gradesheet`, `
-                      <h1>${escapeHtml(child.first_name)} ${escapeHtml(child.last_name)}</h1>
-                      <p class="meta">${escapeHtml(child.admission_number)} · Approved gradesheet</p>
-                      <table><thead><tr><th>Subject</th><th>Class</th><th>Term</th><th>%</th><th>Grade</th></tr></thead>
-                      <tbody>${rows.map((g: any) => `<tr><td>${escapeHtml(g.subject_name)}</td><td>${escapeHtml(g.class_name)}</td><td>${escapeHtml(g.term_name)}</td><td>${escapeHtml(g.computed_percent)}</td><td>${escapeHtml(g.letter_grade)}</td></tr>`).join('') || '<tr><td colspan="5">No approved grades yet</td></tr>'}</tbody></table>
-                    `);
+                    const res = await api.get(`/gradebook/gradesheet/${child.id}`);
+                    printGradesheet(res.data);
                   }}
                 >
-                  Download gradesheet
+                  View gradesheet
                 </button>
-                <Link to="/parent/fees" className="text-primary-600">Fees</Link>
               </div>
             </div>
           ))}
