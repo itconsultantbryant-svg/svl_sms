@@ -12,6 +12,7 @@ export default function AttendancePage() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [records, setRecords] = useState<Record<string, string>>({});
   const [showTake, setShowTake] = useState(false);
+  const [viewSessionId, setViewSessionId] = useState<string | null>(null);
 
   const { data: classes } = useQuery<Class[]>({
     queryKey: ['classes'],
@@ -30,10 +31,24 @@ export default function AttendancePage() {
     enabled: !!classId && showTake,
   });
 
-  const { data: attendanceSessions } = useQuery({
+  const { data: attendanceSessions, isFetching } = useQuery({
     queryKey: ['attendance-sessions', classId, sectionId, date],
-    queryFn: () => api.get('/attendance/sessions', { params: { class_id: classId, section_id: sectionId, date } }).then(r => r.data),
-    enabled: !!classId,
+    queryFn: () => api.get('/attendance/sessions', {
+      params: {
+        class_id: classId || undefined,
+        section_id: sectionId || undefined,
+        date: date || undefined,
+      },
+    }).then(r => r.data),
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
+  });
+
+  const { data: sessionDetail, refetch: refetchDetail } = useQuery({
+    queryKey: ['attendance-session', viewSessionId],
+    queryFn: () => api.get(`/attendance/sessions/${viewSessionId}`).then(r => r.data),
+    enabled: !!viewSessionId,
+    refetchInterval: viewSessionId ? 10000 : false,
   });
 
   const takeMutation = useMutation({
@@ -73,7 +88,7 @@ export default function AttendancePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Attendance</h1>
-        <p className="text-sm text-gray-500 mt-1">Record and manage student attendance</p>
+        <p className="text-sm text-gray-500 mt-1">Record attendance and watch class records update live{isFetching ? ' · refreshing…' : ''}</p>
       </div>
 
       <div className="card">
@@ -85,7 +100,7 @@ export default function AttendancePage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Class *</label>
             <select value={classId} onChange={e => { setClassId(e.target.value); setSectionId(''); }} className="input-field">
-              <option value="">Select Class</option>
+              <option value="">All classes</option>
               {classes?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
@@ -159,7 +174,7 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {!showTake && attendanceSessions && (attendanceSessions as any[]).length > 0 && (
+      {!showTake && (
         <div className="card">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Attendance Records</h2>
           <div className="overflow-x-auto">
@@ -178,7 +193,9 @@ export default function AttendancePage() {
                 </tr>
               </thead>
               <tbody>
-                {(attendanceSessions as any[]).map((session: any) => (
+                {!(attendanceSessions as any[])?.length ? (
+                  <tr><td colSpan={9} className="py-12 text-center text-gray-400">No attendance records yet</td></tr>
+                ) : (attendanceSessions as any[]).map((session: any) => (
                   <tr key={session.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-3 px-3">{session.date}</td>
                     <td className="py-3 px-3">{session.class_name}</td>
@@ -189,8 +206,46 @@ export default function AttendancePage() {
                     <td className="py-3 px-3 text-center text-yellow-600 font-medium">{session.late_count}</td>
                     <td className="py-3 px-3">{session.total_count}</td>
                     <td className="py-3 px-3">
-                      <RecordActions resource="attendance" id={session.id} label={`${session.date} attendance`} invalidate={['attendance-sessions']} />
+                      <div className="flex items-center gap-2">
+                        <button type="button" className="text-primary-600 text-sm" onClick={() => setViewSessionId(session.id)}>View</button>
+                        <RecordActions resource="attendance" id={session.id} label={`${session.date} attendance`} invalidate={['attendance-sessions']} />
+                      </div>
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {viewSessionId && sessionDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">{sessionDetail.class_name} · {sessionDetail.date}</h3>
+                <p className="text-sm text-gray-500">Teacher: {sessionDetail.teacher_name || '—'} · live detail</p>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" className="btn-secondary text-sm" onClick={() => refetchDetail()}>Refresh</button>
+                <button type="button" className="btn-secondary text-sm" onClick={() => setViewSessionId(null)}>Close</button>
+              </div>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="text-left py-2 px-2">Student</th>
+                  <th className="text-left py-2 px-2">Admission #</th>
+                  <th className="text-left py-2 px-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(sessionDetail.records || []).map((row: any) => (
+                  <tr key={row.id} className="border-b border-gray-100">
+                    <td className="py-2 px-2">{row.first_name} {row.last_name}</td>
+                    <td className="py-2 px-2">{row.admission_number}</td>
+                    <td className="py-2 px-2 capitalize">{row.status}</td>
                   </tr>
                 ))}
               </tbody>

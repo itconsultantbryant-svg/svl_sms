@@ -4,6 +4,8 @@ import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import { Institution } from '../../types';
 import { useBrand } from '../../contexts/BrandContext';
+import SignatureSettings from '../../components/settings/SignatureSettings';
+import { CURRENCY_OPTIONS } from '../../utils/currency';
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
@@ -19,6 +21,9 @@ export default function SettingsPage() {
     country: 'Liberia',
     currency: 'USD',
     currency_symbol: '$',
+    secondary_currency: 'LRD',
+    secondary_currency_symbol: 'L$',
+    allowed_currencies: 'USD,LRD',
     timezone: 'Africa/Monrovia',
     motto: '',
     logo: '',
@@ -38,6 +43,9 @@ export default function SettingsPage() {
         ...institution,
         institution_name: institution.institution_name || (institution as any).name,
         institution_code: institution.institution_code || (institution as any).code,
+        secondary_currency: institution.secondary_currency || 'LRD',
+        secondary_currency_symbol: institution.secondary_currency_symbol || 'L$',
+        allowed_currencies: institution.allowed_currencies || 'USD,LRD',
       });
     }
   }, [institution]);
@@ -50,7 +58,16 @@ export default function SettingsPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.put('/settings/institution', form);
+      const allowed = Array.from(new Set([
+        form.currency || 'USD',
+        form.secondary_currency || 'LRD',
+      ].map((code) => String(code).toUpperCase()))).join(',');
+      await api.put('/settings/institution', {
+        ...form,
+        allowed_currencies: allowed,
+        currency_symbol: form.currency === 'LRD' ? (form.currency_symbol || 'L$') : (form.currency_symbol || '$'),
+        secondary_currency_symbol: form.secondary_currency === 'USD' ? (form.secondary_currency_symbol || '$') : (form.secondary_currency_symbol || 'L$'),
+      });
       await queryClient.invalidateQueries({ queryKey: ['institution'] });
       await refreshBranding();
       toast.success('Settings saved successfully');
@@ -65,7 +82,7 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-sm text-gray-500 mt-1">Institution branding and system settings</p>
+        <p className="text-sm text-gray-500 mt-1">Institution branding, dual currency, and official signatures</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -158,19 +175,36 @@ export default function SettingsPage() {
         </div>
 
         <div className="card">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Regional Settings</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Currencies (USD & LRD)</h2>
+          <p className="text-sm text-gray-500 mb-4">Finance officers can record fees, payments, income, and expenses in either or both currencies.</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
-              <input name="currency" value={form.currency || ''} onChange={handleChange} className="input-field" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Primary currency</label>
+              <select name="currency" value={form.currency || 'USD'} onChange={handleChange} className="input-field">
+                {CURRENCY_OPTIONS.map((item) => (
+                  <option key={item.code} value={item.code}>{item.label}</option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Currency Symbol</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Primary symbol</label>
               <input name="currency_symbol" value={form.currency_symbol || ''} onChange={handleChange} className="input-field" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
               <input name="timezone" value={form.timezone || ''} onChange={handleChange} className="input-field" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Secondary currency</label>
+              <select name="secondary_currency" value={form.secondary_currency || 'LRD'} onChange={handleChange} className="input-field">
+                {CURRENCY_OPTIONS.map((item) => (
+                  <option key={item.code} value={item.code}>{item.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Secondary symbol</label>
+              <input name="secondary_currency_symbol" value={form.secondary_currency_symbol || ''} onChange={handleChange} className="input-field" />
             </div>
           </div>
         </div>
@@ -181,6 +215,8 @@ export default function SettingsPage() {
           </button>
         </div>
       </form>
+
+      <SignatureSettings />
     </div>
   );
 }

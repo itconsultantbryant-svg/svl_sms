@@ -40,6 +40,7 @@ import { demoModeRouter } from './routes/demo-mode-enforcement';
 import { gradebookRouter } from './routes/gradebook';
 import { lessonPlansRouter } from './routes/lesson-plans';
 import { recordsRouter } from './routes/records';
+import { notificationsRouter } from './routes/notifications';
 import { errorHandler } from './middleware/errorHandler';
 import { authenticate } from './middleware/auth';
 
@@ -141,6 +142,7 @@ app.use('/api/admission', authenticate, admissionRouter);
 app.use('/api/gradebook', authenticate, gradebookRouter);
 app.use('/api/lesson-plans', authenticate, lessonPlansRouter);
 app.use('/api/records', authenticate, recordsRouter);
+app.use('/api/notifications', authenticate, notificationsRouter);
 
 // Error handler
 app.use(errorHandler);

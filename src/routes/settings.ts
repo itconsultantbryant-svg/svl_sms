@@ -15,7 +15,8 @@ settingsRouter.get('/institution', (req: AuthRequest, res: Response) => {
     SELECT id, institution_code, institution_name, institution_type,
            email, phone, mobile, website, address, county, city, postal_code, country,
            logo, favicon, motto, primary_color, secondary_color, accent_color,
-           currency, currency_symbol, timezone, date_format,
+           currency, currency_symbol, secondary_currency, secondary_currency_symbol, allowed_currencies,
+           timezone, date_format,
            subscription_plan, subscription_status, max_students, max_staff, is_active
     FROM institutions
     WHERE id = ?
@@ -56,6 +57,9 @@ settingsRouter.put('/institution', authorize('platform_admin', 'institution_admi
     country,
     currency,
     currency_symbol,
+    secondary_currency,
+    secondary_currency_symbol,
+    allowed_currencies,
     timezone,
     motto,
     primary_color,
@@ -89,6 +93,9 @@ settingsRouter.put('/institution', authorize('platform_admin', 'institution_admi
       country = COALESCE(?, country),
       currency = COALESCE(?, currency),
       currency_symbol = COALESCE(?, currency_symbol),
+      secondary_currency = COALESCE(?, secondary_currency),
+      secondary_currency_symbol = COALESCE(?, secondary_currency_symbol),
+      allowed_currencies = COALESCE(?, allowed_currencies),
       timezone = COALESCE(?, timezone),
       motto = COALESCE(?, motto),
       primary_color = COALESCE(?, primary_color),
@@ -109,6 +116,9 @@ settingsRouter.put('/institution', authorize('platform_admin', 'institution_admi
     country ?? null,
     currency ?? null,
     currency_symbol ?? null,
+    secondary_currency ?? null,
+    secondary_currency_symbol ?? null,
+    allowed_currencies ?? null,
     timezone ?? null,
     motto ?? null,
     primary_color ?? null,
@@ -158,6 +168,64 @@ settingsRouter.put('/general', authorize('platform_admin', 'institution_admin'),
   transaction();
 
   res.json({ message: 'Settings updated successfully' });
+});
+
+settingsRouter.get('/signatures', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT * FROM institution_signatures
+    WHERE institution_id = ?
+    ORDER BY sort_order, role_key
+  `).all(req.institution_id);
+  res.json(rows);
+});
+
+settingsRouter.put('/signatures/:roleKey', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  const roleKey = req.params.roleKey;
+  if (!['registrar', 'principal', 'board_chair'].includes(roleKey)) {
+    res.status(400).json({ error: 'Signature role must be registrar, principal, or board_chair' });
+    return;
+  }
+  const { signer_name, signer_title, signature_image, sort_order } = req.body;
+  if (!signer_name || !signature_image) {
+    res.status(400).json({ error: 'Signer name and signature image are required' });
+    return;
+  }
+  const titles: Record<string, string> = {
+    registrar: 'Registrar',
+    principal: 'Principal',
+    board_chair: 'Board Chair',
+  };
+  const db = getDatabase();
+  const existing = db.prepare(`
+    SELECT id FROM institution_signatures WHERE institution_id = ? AND role_key = ?
+  `).get(req.institution_id, roleKey) as { id: string } | undefined;
+  if (existing) {
+    db.prepare(`
+      UPDATE institution_signatures SET
+        signer_name = ?, signer_title = ?, signature_image = ?,
+        sort_order = COALESCE(?, sort_order), is_active = 1, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(signer_name, signer_title || titles[roleKey], signature_image, sort_order ?? null, existing.id);
+    res.json({ id: existing.id, message: 'Signature updated' });
+    return;
+  }
+  const id = generateId();
+  const order = sort_order ?? (roleKey === 'registrar' ? 1 : roleKey === 'principal' ? 2 : 3);
+  db.prepare(`
+    INSERT INTO institution_signatures
+      (id, institution_id, role_key, signer_name, signer_title, signature_image, sort_order, is_active)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+  `).run(id, req.institution_id, roleKey, signer_name, signer_title || titles[roleKey], signature_image, order);
+  res.status(201).json({ id, message: 'Signature saved' });
+});
+
+settingsRouter.delete('/signatures/:roleKey', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  db.prepare(`
+    DELETE FROM institution_signatures WHERE institution_id = ? AND role_key = ?
+  `).run(req.institution_id, req.params.roleKey);
+  res.json({ message: 'Signature removed' });
 });
 
 settingsRouter.get('/roles', (req: AuthRequest, res: Response) => {

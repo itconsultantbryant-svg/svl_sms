@@ -92,7 +92,97 @@ studentsRouter.get('/:id', (req: AuthRequest, res: Response) => {
     `SELECT * FROM student_documents WHERE student_id = ? ${docInstitutionFilter}`
   ).all(id);
 
-  res.json({ ...student, parents, documents });
+  const priorRecords = db.prepare(`
+    SELECT id, record_type, title, school_name, class_name, session_name, notes, file_name, mime_type, created_at,
+           CASE WHEN file_data IS NOT NULL AND length(file_data) > 0 THEN 1 ELSE 0 END as has_file
+    FROM student_prior_records
+    WHERE student_id = ? AND (? IS NULL OR institution_id = ?)
+    ORDER BY created_at DESC
+  `).all(id, req.institution_id || null, req.institution_id || null);
+
+  const terms = db.prepare(`
+    SELECT t.id, t.name, t.session_id, s.name as session_name
+    FROM terms t
+    JOIN academic_sessions s ON s.id = t.session_id
+    WHERE s.institution_id = ?
+    ORDER BY s.start_date DESC, t.start_date
+  `).all(student.institution_id);
+
+  res.json({
+    ...student,
+    parents,
+    documents,
+    prior_records: priorRecords,
+    available_terms: terms,
+    gradesheet_links: {
+      yearly: `/api/gradebook/gradesheet/${id}?mode=year`,
+      terms: (terms as any[]).map((term) => ({
+        term_id: term.id,
+        label: `${term.session_name} — ${term.name}`,
+        path: `/api/gradebook/gradesheet/${id}?mode=term&term_id=${term.id}`,
+      })),
+    },
+  });
+});
+
+studentsRouter.get('/:id/prior-records/:recordId/file', (req: AuthRequest, res: Response) => {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT * FROM student_prior_records
+    WHERE id = ? AND student_id = ? AND (? IS NULL OR institution_id = ?)
+  `).get(req.params.recordId, req.params.id, req.institution_id || null, req.institution_id || null) as any;
+  if (!row?.file_data) {
+    res.status(404).json({ error: 'File not found' });
+    return;
+  }
+  res.json({
+    file_name: row.file_name,
+    mime_type: row.mime_type,
+    file_data: row.file_data,
+    title: row.title,
+  });
+});
+
+studentsRouter.post('/:id/prior-records', authorize('platform_admin', 'institution_admin', 'registrar', 'staff'), (req: AuthRequest, res: Response) => {
+  const {
+    record_type, title, school_name, class_name, session_name, notes,
+    file_data, file_name, mime_type,
+  } = req.body;
+  const allowed = ['previous_gradesheet', 'transfer_transcript', 'prior_class', 'other'];
+  if (!allowed.includes(String(record_type || ''))) {
+    res.status(400).json({ error: 'Invalid record type' });
+    return;
+  }
+  const db = getDatabase();
+  const student = db.prepare(`
+    SELECT id FROM students WHERE id = ? AND (? IS NULL OR institution_id = ?)
+  `).get(req.params.id, req.institution_id || null, req.institution_id || null);
+  if (!student) {
+    res.status(404).json({ error: 'Student not found' });
+    return;
+  }
+  const id = generateId();
+  db.prepare(`
+    INSERT INTO student_prior_records (
+      id, institution_id, student_id, record_type, title, school_name, class_name, session_name,
+      notes, file_data, file_name, mime_type, uploaded_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    req.institution_id,
+    req.params.id,
+    record_type,
+    title || null,
+    school_name || null,
+    class_name || null,
+    session_name || null,
+    notes || null,
+    file_data || null,
+    file_name || null,
+    mime_type || null,
+    req.user?.id || null
+  );
+  res.status(201).json({ id, message: 'Prior record saved' });
 });
 
 function emptyToNull(value: any) {
@@ -105,7 +195,7 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
     first_name, middle_name, last_name, date_of_birth, gender, nationality,
     county, address, phone, email, photo, blood_group, medical_info,
     previous_school, previous_class, admission_date, branch_id, class_id,
-    section_id, session_id, parent
+    section_id, session_id, parent, prior_records
   } = req.body;
 
   if (!first_name || !last_name) {
@@ -265,6 +355,34 @@ studentsRouter.post('/', (req: AuthRequest, res: Response) => {
         username: finalParentUsername,
         temporary_password: parentPassword,
       };
+    }
+
+    const records = Array.isArray(prior_records) ? prior_records : [];
+    for (const record of records) {
+      const type = ['previous_gradesheet', 'transfer_transcript', 'prior_class', 'other'].includes(String(record?.record_type || ''))
+        ? record.record_type
+        : (previous_school ? 'transfer_transcript' : 'previous_gradesheet');
+      if (!record?.file_data && !record?.title && !record?.notes) continue;
+      db.prepare(`
+        INSERT INTO student_prior_records (
+          id, institution_id, student_id, record_type, title, school_name, class_name, session_name,
+          notes, file_data, file_name, mime_type, uploaded_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        generateId(),
+        req.institution_id,
+        id,
+        type,
+        record.title || (type === 'transfer_transcript' ? 'Transfer transcript' : 'Previous gradesheet'),
+        record.school_name || previous_school || null,
+        record.class_name || previous_class || null,
+        record.session_name || null,
+        record.notes || null,
+        record.file_data || null,
+        record.file_name || null,
+        record.mime_type || null,
+        req.user?.id || null
+      );
     }
   });
 

@@ -22,6 +22,14 @@ export default function StudentFormPage() {
     branch_id: '', class_id: '', section_id: '', session_id: '',
     parent: { first_name: '', last_name: '', relationship: 'father', phone: '', email: '', occupation: '' },
   });
+  const [priorRecord, setPriorRecord] = useState({
+    record_type: 'previous_gradesheet',
+    title: '',
+    notes: '',
+    file_data: '',
+    file_name: '',
+    mime_type: '',
+  });
   const [createdCreds, setCreatedCreds] = useState<{
     admission_number: string;
     temporary_password: string;
@@ -86,7 +94,15 @@ export default function StudentFormPage() {
         toast.success('Student updated successfully');
         navigate('/students');
       } else {
-        const res = await api.post('/students', form);
+        const payload: any = { ...form };
+        if (priorRecord.file_data || priorRecord.title || priorRecord.notes) {
+          payload.prior_records = [{
+            ...priorRecord,
+            school_name: form.previous_school || null,
+            class_name: form.previous_class || null,
+          }];
+        }
+        const res = await api.post('/students', payload);
         setCreatedCreds({
           admission_number: res.data.admission_number,
           temporary_password: res.data.temporary_password,
@@ -249,8 +265,83 @@ export default function StudentFormPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Admission Date</label>
               <input name="admission_date" type="date" value={form.admission_date} onChange={handleChange} className="input-field" />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Previous school</label>
+              <input name="previous_school" value={form.previous_school} onChange={handleChange} className="input-field" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Previous class</label>
+              <input name="previous_class" value={form.previous_class} onChange={handleChange} className="input-field" />
+            </div>
           </div>
         </div>
+
+        {!isEdit && (
+          <div className="card">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Previous gradesheet / transfer transcript</h2>
+            <p className="text-sm text-gray-500 mb-4">Attach prior academic records for transfer students. These stay in the student file.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Record type</label>
+                <select
+                  className="input-field"
+                  value={priorRecord.record_type}
+                  onChange={(e) => setPriorRecord((prev) => ({ ...prev, record_type: e.target.value }))}
+                >
+                  <option value="previous_gradesheet">Previous gradesheet</option>
+                  <option value="transfer_transcript">Transfer transcript</option>
+                  <option value="prior_class">Prior class record</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                <input
+                  className="input-field"
+                  value={priorRecord.title}
+                  onChange={(e) => setPriorRecord((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="e.g. 2024/25 transcript"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Upload file (PDF or image)</label>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 8 * 1024 * 1024) {
+                      toast.error('File must be under 8MB');
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setPriorRecord((prev) => ({
+                        ...prev,
+                        file_data: String(reader.result || ''),
+                        file_name: file.name,
+                        mime_type: file.type || 'application/octet-stream',
+                        title: prev.title || file.name,
+                      }));
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                {priorRecord.file_name ? <p className="text-xs text-green-600 mt-1">Attached: {priorRecord.file_name}</p> : null}
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea
+                  className="input-field"
+                  rows={2}
+                  value={priorRecord.notes}
+                  onChange={(e) => setPriorRecord((prev) => ({ ...prev, notes: e.target.value }))}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {!isEdit && (
           <div className="card">

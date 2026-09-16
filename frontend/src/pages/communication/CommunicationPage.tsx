@@ -265,19 +265,19 @@ function AnnouncementsTab() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [form, setForm] = useState({ title: '', content: '', type: 'general', priority: 'normal', audience: 'all', is_published: false });
+  const [form, setForm] = useState({ title: '', content: '', type: 'general', priority: 'normal', audience: 'all', is_published: false, require_ack: true });
 
   const { data, isLoading } = useQuery<any>({ queryKey: ['announcements', page], queryFn: () => api.get('/communication/announcements', { params: { page, limit: 20 } }).then(r => r.data) });
 
   const createMutation = useMutation({
     mutationFn: (d: any) => api.post('/communication/announcements', d),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['announcements'] }); toast.success('Announcement created'); setShowForm(false); setForm({ title: '', content: '', type: 'general', priority: 'normal', audience: 'all', is_published: false }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['announcements'] }); queryClient.invalidateQueries({ queryKey: ['notifications-inbox'] }); toast.success('Announcement created'); setShowForm(false); setForm({ title: '', content: '', type: 'general', priority: 'normal', audience: 'all', is_published: false, require_ack: true }); },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed'),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => api.put(`/communication/announcements/${id}`, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['announcements'] }); toast.success('Announcement updated'); setShowForm(false); setEditId(null); setForm({ title: '', content: '', type: 'general', priority: 'normal', audience: 'all', is_published: false }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['announcements'] }); queryClient.invalidateQueries({ queryKey: ['notifications-inbox'] }); toast.success('Announcement updated'); setShowForm(false); setEditId(null); setForm({ title: '', content: '', type: 'general', priority: 'normal', audience: 'all', is_published: false, require_ack: true }); },
   });
 
   const deleteMutation = useMutation({
@@ -287,7 +287,7 @@ function AnnouncementsTab() {
 
   const handleEdit = (ann: any) => {
     setEditId(ann.id);
-    setForm({ title: ann.title, content: ann.content, type: ann.type, priority: ann.priority, audience: ann.audience, is_published: ann.is_published === 1 });
+    setForm({ title: ann.title, content: ann.content, type: ann.type, priority: ann.priority, audience: ann.audience, is_published: ann.is_published === 1, require_ack: ann.require_ack !== 0 });
     setShowForm(true);
   };
 
@@ -305,7 +305,7 @@ function AnnouncementsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end"><button onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ title: '', content: '', type: 'general', priority: 'normal', audience: 'all', is_published: false }); }} className="btn-primary"><Plus size={16} className="mr-2" /> New Announcement</button></div>
+      <div className="flex justify-end"><button onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ title: '', content: '', type: 'general', priority: 'normal', audience: 'all', is_published: false, require_ack: true }); }} className="btn-primary"><Plus size={16} className="mr-2" /> New Announcement</button></div>
 
       {showForm && (
         <div className="card space-y-4">
@@ -349,9 +349,15 @@ function AnnouncementsTab() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Content *</label>
             <textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} rows={6} className="input-field" placeholder="Enter announcement content..."></textarea>
           </div>
-          <div className="flex items-center gap-2">
-            <input type="checkbox" checked={form.is_published} onChange={e => setForm(f => ({ ...f, is_published: e.target.checked }))} className="rounded" />
-            <label className="text-sm text-gray-700">Publish immediately</label>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={form.is_published} onChange={e => setForm(f => ({ ...f, is_published: e.target.checked }))} className="rounded" />
+              Publish immediately
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={form.require_ack} onChange={e => setForm(f => ({ ...f, require_ack: e.target.checked }))} className="rounded" />
+              Require acknowledgement
+            </label>
           </div>
           <div className="flex gap-2">
             <button onClick={handleSubmit} disabled={!form.title || !form.content} className="btn-primary">{editId ? 'Update' : 'Create'}</button>

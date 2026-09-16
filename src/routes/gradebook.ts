@@ -3,7 +3,7 @@ import { getDatabase } from '../database/init';
 import { AuthRequest, authorize } from '../middleware/auth';
 import { injectTenant, requireTenant } from '../middleware/tenant';
 import { generateId, paginate } from '../utils/helpers';
-import { buildGradesheet } from '../utils/gradesheet';
+import { buildGradesheet, promoteEligibleStudents } from '../utils/gradesheet';
 
 export const gradebookRouter = Router();
 
@@ -246,12 +246,27 @@ gradebookRouter.get('/gradesheet/:studentId', (req: AuthRequest, res: Response) 
     res.status(403).json({ error: 'Not allowed to view this gradesheet' });
     return;
   }
-  const sheet = buildGradesheet(req.institution_id, studentId);
+  const mode = String(req.query.mode || 'year') === 'term' ? 'term' : 'year';
+  const termId = (req.query.term_id as string) || null;
+  const sheet = buildGradesheet(req.institution_id, studentId, { mode, termId });
   if (!sheet) {
     res.status(404).json({ error: 'Student not found' });
     return;
   }
   res.json(sheet);
+});
+
+gradebookRouter.post('/promote', authorize('platform_admin', 'institution_admin'), (req: AuthRequest, res: Response) => {
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school first' });
+    return;
+  }
+  try {
+    const result = promoteEligibleStudents(req.institution_id, req.body?.session_id || null);
+    res.json({ message: `Promoted ${result.promoted} student(s)`, ...result });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Promotion failed' });
+  }
 });
 
 gradebookRouter.get('/student/me', authorize('student'), (req: AuthRequest, res: Response) => {

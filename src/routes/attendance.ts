@@ -80,74 +80,117 @@ attendanceRouter.get('/sessions/:id', (req: AuthRequest, res: Response) => {
 });
 
 attendanceRouter.post('/take', (req: AuthRequest, res: Response) => {
-  const { class_id, section_id, subject_id, session_id, term_id, date, type, records } = req.body;
+  try {
+    const { class_id, section_id, subject_id, session_id, term_id, date, type, records } = req.body;
 
-  if (!class_id || !date || !records || !Array.isArray(records)) {
-    res.status(400).json({ error: 'Class, date, and attendance records are required' });
-    return;
-  }
-
-  const db = getDatabase();
-  const attendanceSessionId = generateId();
-
-  const transaction = db.transaction(() => {
-    // TENANT ISOLATION: Include institution_id in INSERT
-    db.prepare(`
-      INSERT INTO attendance_sessions (id, institution_id, class_id, section_id, subject_id, session_id, term_id, teacher_id, date, type)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      attendanceSessionId, req.institution_id, class_id, section_id || null, subject_id || null,
-      session_id || null, term_id || null, req.user?.id || null, date, type || 'class'
-    );
-
-    const insertRecord = db.prepare(`
-      INSERT INTO student_attendance (id, attendance_session_id, student_id, status, remarks)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-
-    for (const record of records) {
-      insertRecord.run(generateId(), attendanceSessionId, record.student_id, record.status, record.remarks || null);
+    if (!class_id || !date || !records || !Array.isArray(records)) {
+      res.status(400).json({ error: 'Class, date, and attendance records are required' });
+      return;
     }
-  });
+    if (!req.institution_id) {
+      res.status(400).json({ error: 'Select a school before recording attendance' });
+      return;
+    }
 
-  transaction();
-  res.status(201).json({ id: attendanceSessionId, message: 'Attendance recorded successfully' });
+    const db = getDatabase();
+    const attendanceSessionId = generateId();
+    const teacher = db.prepare(`
+      SELECT id FROM employees
+      WHERE institution_id = ?
+        AND (user_id = ? OR id = (
+          SELECT linked_entity_id FROM users WHERE id = ? AND linked_entity_type = 'employee'
+        ))
+      LIMIT 1
+    `).get(req.institution_id, req.user?.id || '', req.user?.id || '') as { id: string } | undefined;
+
+    const transaction = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO attendance_sessions (id, institution_id, class_id, section_id, subject_id, session_id, term_id, teacher_id, date, type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        attendanceSessionId,
+        req.institution_id,
+        class_id,
+        section_id || null,
+        subject_id || null,
+        session_id || null,
+        term_id || null,
+        teacher?.id || null,
+        date,
+        type || 'class'
+      );
+
+      const insertRecord = db.prepare(`
+        INSERT INTO student_attendance (id, institution_id, attendance_session_id, student_id, status, remarks)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const record of records) {
+        if (!record?.student_id || !record?.status) continue;
+        insertRecord.run(
+          generateId(),
+          req.institution_id,
+          attendanceSessionId,
+          record.student_id,
+          record.status,
+          record.remarks || null
+        );
+      }
+    });
+
+    transaction();
+    res.status(201).json({ id: attendanceSessionId, message: 'Attendance recorded successfully' });
+  } catch (err: any) {
+    console.error('Attendance take failed:', err);
+    res.status(400).json({ error: err.message || 'Could not save attendance' });
+  }
 });
 
 attendanceRouter.put('/sessions/:id', (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
-  const { records } = req.body;
+  try {
+    const { id } = req.params;
+    const { records } = req.body;
 
-  if (!records || !Array.isArray(records)) {
-    res.status(400).json({ error: 'Attendance records are required' });
-    return;
-  }
-
-  const db = getDatabase();
-
-  // TENANT ISOLATION: Verify session belongs to this institution
-  const institutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
-  const session = db.prepare(`SELECT id FROM attendance_sessions WHERE id = ? ${institutionFilter}`).get(id);
-  if (!session) {
-    res.status(404).json({ error: 'Attendance session not found' });
-    return;
-  }
-
-  const transaction = db.transaction(() => {
-    db.prepare('DELETE FROM student_attendance WHERE attendance_session_id = ?').run(id);
-
-    const insertRecord = db.prepare(`
-      INSERT INTO student_attendance (id, attendance_session_id, student_id, status, remarks)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-
-    for (const record of records) {
-      insertRecord.run(generateId(), id, record.student_id, record.status, record.remarks || null);
+    if (!records || !Array.isArray(records)) {
+      res.status(400).json({ error: 'Attendance records are required' });
+      return;
     }
-  });
 
-  transaction();
-  res.json({ message: 'Attendance updated successfully' });
+    const db = getDatabase();
+    const institutionFilter = req.institution_id ? `AND institution_id = '${req.institution_id}'` : '';
+    const session = db.prepare(`SELECT id FROM attendance_sessions WHERE id = ? ${institutionFilter}`).get(id);
+    if (!session) {
+      res.status(404).json({ error: 'Attendance session not found' });
+      return;
+    }
+
+    const transaction = db.transaction(() => {
+      db.prepare('DELETE FROM student_attendance WHERE attendance_session_id = ?').run(id);
+
+      const insertRecord = db.prepare(`
+        INSERT INTO student_attendance (id, institution_id, attendance_session_id, student_id, status, remarks)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const record of records) {
+        if (!record?.student_id || !record?.status) continue;
+        insertRecord.run(
+          generateId(),
+          req.institution_id,
+          id,
+          record.student_id,
+          record.status,
+          record.remarks || null
+        );
+      }
+    });
+
+    transaction();
+    res.json({ message: 'Attendance updated successfully' });
+  } catch (err: any) {
+    console.error('Attendance update failed:', err);
+    res.status(400).json({ error: err.message || 'Could not update attendance' });
+  }
 });
 
 attendanceRouter.get('/student/:studentId', (req: AuthRequest, res: Response) => {
@@ -210,7 +253,11 @@ attendanceRouter.get('/report', (req: AuthRequest, res: Response) => {
       COUNT(CASE WHEN sa.status = 'late' THEN 1 END) as late_days,
       COUNT(CASE WHEN sa.status = 'excused' THEN 1 END) as excused_days,
       COUNT(sa.id) as total_days,
-      ROUND(COUNT(CASE WHEN sa.status = 'present' THEN 1 END) * 100.0 / MAX(COUNT(sa.id), 1), 1) as attendance_percentage
+      ROUND(
+        CASE WHEN COUNT(sa.id) = 0 THEN 0
+        ELSE COUNT(CASE WHEN sa.status = 'present' THEN 1 END) * 100.0 / COUNT(sa.id)
+        END
+      , 1) as attendance_percentage
     FROM students s
     LEFT JOIN student_attendance sa ON sa.student_id = s.id
     LEFT JOIN attendance_sessions a ON sa.attendance_session_id = a.id AND a.class_id = ? ${dateFilter}

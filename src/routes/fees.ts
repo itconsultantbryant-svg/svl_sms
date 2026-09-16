@@ -100,14 +100,15 @@ feesRouter.get('/structures', (req: AuthRequest, res: Response) => {
 });
 
 feesRouter.post('/structures', authorize('platform_admin', 'institution_admin', 'accountant', 'finance_officer', 'finance'), (req: AuthRequest, res: Response) => {
-  const { fee_type_id, session_id, term_id, branch_id, class_id, amount, due_date } = req.body;
+  const { fee_type_id, session_id, term_id, branch_id, class_id, amount, due_date, currency_code } = req.body;
   if (!fee_type_id || !session_id || !class_id || !amount) {
     res.status(400).json({ error: 'Fee type, session, class, and amount are required' });
     return;
   }
   const db = getDatabase();
   const id = generateId();
-  db.prepare(`INSERT INTO fee_structures (id, institution_id, fee_type_id, session_id, term_id, branch_id, class_id, amount, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.institution_id, fee_type_id, session_id, term_id || null, branch_id || null, class_id, amount, due_date || null);
+  const currency = String(currency_code || 'USD').toUpperCase() === 'LRD' ? 'LRD' : 'USD';
+  db.prepare(`INSERT INTO fee_structures (id, institution_id, fee_type_id, session_id, term_id, branch_id, class_id, amount, due_date, currency_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.institution_id, fee_type_id, session_id, term_id || null, branch_id || null, class_id, amount, due_date || null, currency);
   const assigned = assignClassFees({
     institutionId: req.institution_id,
     createdBy: req.user?.id,
@@ -268,7 +269,7 @@ feesRouter.get('/payments', (req: AuthRequest, res: Response) => {
 });
 
 feesRouter.post('/payments', (req: AuthRequest, res: Response) => {
-  const { invoice_id, amount, payment_method, payment_date, reference_number, notes } = req.body;
+  const { invoice_id, amount, payment_method, payment_date, reference_number, notes, currency_code } = req.body;
   if (!invoice_id || !amount || !payment_date) {
     res.status(400).json({ error: 'Invoice, amount, and payment date are required' });
     return;
@@ -298,12 +299,13 @@ feesRouter.post('/payments', (req: AuthRequest, res: Response) => {
   const paymentId = generateId();
   const paymentNumber = `PAY-${Date.now().toString(36).toUpperCase()}`;
   const method = normalizePaymentMethod(payment_method);
+  const currency = String(currency_code || invoice.currency_code || 'USD').toUpperCase() === 'LRD' ? 'LRD' : 'USD';
 
   const transaction = db.transaction(() => {
     db.prepare(`
-      INSERT INTO payments (id, institution_id, payment_number, invoice_id, student_id, amount, payment_method, payment_date, reference_number, received_by, notes, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')
-    `).run(paymentId, req.institution_id, paymentNumber, invoice_id, invoice.student_id, payAmount, method, payment_date, reference_number || null, req.user?.id || null, notes || null);
+      INSERT INTO payments (id, institution_id, payment_number, invoice_id, student_id, amount, payment_method, payment_date, reference_number, received_by, notes, status, currency_code)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)
+    `).run(paymentId, req.institution_id, paymentNumber, invoice_id, invoice.student_id, payAmount, method, payment_date, reference_number || null, req.user?.id || null, notes || null, currency);
 
     const newPaid = Number(invoice.paid_amount || 0) + payAmount;
     const newBalance = Number(invoice.total_amount || 0) - Number(invoice.discount_amount || 0) - newPaid;

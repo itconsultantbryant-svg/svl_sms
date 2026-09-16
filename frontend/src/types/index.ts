@@ -226,6 +226,9 @@ export interface Institution {
   country: string;
   currency: string;
   currency_symbol: string;
+  secondary_currency?: string;
+  secondary_currency_symbol?: string;
+  allowed_currencies?: string;
   timezone: string;
   motto?: string;
   primary_color?: string;

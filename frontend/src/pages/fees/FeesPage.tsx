@@ -4,14 +4,17 @@ import { Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import RecordActions from '../../components/common/RecordActions';
+import { CurrencySelect, useInstitutionCurrency } from '../../components/common/CurrencySelect';
+import { formatMoney } from '../../utils/currency';
 import { Class, AcademicSession } from '../../types';
 
 export default function FeesPage() {
   const queryClient = useQueryClient();
+  const { institution, defaultCode } = useInstitutionCurrency();
   const [tab, setTab] = useState<'structures' | 'types'>('structures');
   const [showForm, setShowForm] = useState(false);
   const [typeForm, setTypeForm] = useState({ name: '', code: '', description: '' });
-  const [structForm, setStructForm] = useState({ fee_type_id: '', session_id: '', term_id: '', class_id: '', amount: '', due_date: '' });
+  const [structForm, setStructForm] = useState({ fee_type_id: '', session_id: '', term_id: '', class_id: '', amount: '', due_date: '', currency_code: 'USD' });
 
   const { data: feeTypes } = useQuery<any[]>({
     queryKey: ['fee-types'],
@@ -54,7 +57,7 @@ export default function FeesPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard-finance'] });
       toast.success(res?.data?.message || 'Fee assigned to the class');
       setShowForm(false);
-      setStructForm({ fee_type_id: '', session_id: '', term_id: '', class_id: '', amount: '', due_date: '' });
+      setStructForm({ fee_type_id: '', session_id: '', term_id: '', class_id: '', amount: '', due_date: '', currency_code: defaultCode });
     },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed'),
   });
@@ -64,7 +67,7 @@ export default function FeesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Fee Management</h1>
-          <p className="text-sm text-gray-500 mt-1">A class fee is billed to every student enrolled in that class</p>
+          <p className="text-sm text-gray-500 mt-1">Assign class fees in USD or LRD — billed to every enrolled student</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary">
           <Plus size={16} className="mr-2" /> {tab === 'types' ? 'Add Category' : 'Add Structure'}
@@ -123,8 +126,12 @@ export default function FeesPage() {
                 {classes?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
+            <CurrencySelect
+              value={structForm.currency_code || defaultCode}
+              onChange={(code) => setStructForm((f) => ({ ...f, currency_code: code }))}
+            />
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount ($) *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
               <input type="number" step="0.01" value={structForm.amount} onChange={e => setStructForm(f => ({ ...f, amount: e.target.value }))} className="input-field" required />
             </div>
             <div>
@@ -177,6 +184,7 @@ export default function FeesPage() {
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Class</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Session</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Term</th>
+                <th className="text-left py-3 px-3 font-medium text-gray-500">Currency</th>
                 <th className="text-right py-3 px-3 font-medium text-gray-500">Amount</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Due Date</th>
                 <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
@@ -184,14 +192,15 @@ export default function FeesPage() {
             </thead>
             <tbody>
               {!structures?.length ? (
-                <tr><td colSpan={7} className="py-12 text-center text-gray-400">No fee structures defined</td></tr>
+                <tr><td colSpan={8} className="py-12 text-center text-gray-400">No fee structures defined</td></tr>
               ) : structures.map(fs => (
                 <tr key={fs.id} className="border-b border-gray-100">
                   <td className="py-3 px-3 font-medium">{fs.fee_type_name}</td>
                   <td className="py-3 px-3">{fs.class_name}</td>
                   <td className="py-3 px-3">{fs.session_name}</td>
                   <td className="py-3 px-3">{fs.term_name || 'All'}</td>
-                  <td className="py-3 px-3 text-right font-medium">${fs.amount.toFixed(2)}</td>
+                  <td className="py-3 px-3">{fs.currency_code || 'USD'}</td>
+                  <td className="py-3 px-3 text-right font-medium">{formatMoney(fs.amount, fs.currency_code, institution)}</td>
                   <td className="py-3 px-3">{fs.due_date || '-'}</td>
                   <td className="py-3 px-3">
                     <RecordActions resource="fee_structures" id={fs.id} label={fs.fee_type_name} invalidate={['fee-structures', 'invoices']} fields={[

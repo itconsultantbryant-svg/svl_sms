@@ -61,7 +61,7 @@ export function assignClassFees(opts: {
 
   const structures = db.prepare(`
     SELECT fs.id, fs.fee_type_id, fs.session_id, fs.term_id, fs.branch_id, fs.class_id, fs.amount, fs.due_date,
-           ft.name as fee_type_name
+           COALESCE(fs.currency_code, 'USD') as currency_code, ft.name as fee_type_name
     FROM fee_structures fs
     LEFT JOIN fee_types ft ON ft.id = fs.fee_type_id
     WHERE fs.institution_id = ?
@@ -90,14 +90,14 @@ export function assignClassFees(opts: {
 
   const touchedStudents = new Set<string>();
   const insertItem = db.prepare(`
-    INSERT INTO invoice_items (id, institution_id, invoice_id, fee_type_id, fee_structure_id, description, amount, discount, net_amount)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO invoice_items (id, institution_id, invoice_id, fee_type_id, fee_structure_id, description, amount, discount, net_amount, currency_code)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertInvoice = db.prepare(`
     INSERT INTO invoices (
       id, institution_id, invoice_number, student_id, session_id, term_id,
-      total_amount, discount_amount, paid_amount, balance, due_date, status, created_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'unpaid', ?)
+      total_amount, discount_amount, paid_amount, balance, due_date, status, created_by, currency_code
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'unpaid', ?, ?)
   `);
   const addToInvoice = db.prepare(`
     UPDATE invoices
@@ -156,17 +156,19 @@ export function assignClassFees(opts: {
         const discount = studentDiscount(student.id, structure.session_id, opts.institutionId, amount);
         const net = Math.max(0, amount - discount);
         const description = structure.fee_type_name || 'School fee';
+        const currency = String(structure.currency_code || 'USD').toUpperCase() === 'LRD' ? 'LRD' : 'USD';
 
         const openInvoice = db.prepare(`
           SELECT id FROM invoices
           WHERE institution_id = ? AND student_id = ? AND session_id = ?
             AND ((? IS NULL AND term_id IS NULL) OR term_id = ?)
+            AND COALESCE(currency_code, 'USD') = ?
             AND status IN ('unpaid', 'partial', 'overdue')
           ORDER BY created_at DESC LIMIT 1
-        `).get(opts.institutionId, student.id, structure.session_id, structure.term_id, structure.term_id) as { id: string } | undefined;
+        `).get(opts.institutionId, student.id, structure.session_id, structure.term_id, structure.term_id, currency) as { id: string } | undefined;
 
         if (openInvoice) {
-          insertItem.run(generateId(), opts.institutionId, openInvoice.id, structure.fee_type_id, structure.id, description, amount, discount, net);
+          insertItem.run(generateId(), opts.institutionId, openInvoice.id, structure.fee_type_id, structure.id, description, amount, discount, net, currency);
           addToInvoice.run(amount, discount, net, structure.due_date || null, openInvoice.id);
         } else {
           const invoiceId = generateId();
@@ -181,9 +183,10 @@ export function assignClassFees(opts: {
             discount,
             net,
             structure.due_date || null,
-            opts.createdBy || null
+            opts.createdBy || null,
+            currency
           );
-          insertItem.run(generateId(), opts.institutionId, invoiceId, structure.fee_type_id, structure.id, description, amount, discount, net);
+          insertItem.run(generateId(), opts.institutionId, invoiceId, structure.fee_type_id, structure.id, description, amount, discount, net, currency);
           result.invoices += 1;
         }
 

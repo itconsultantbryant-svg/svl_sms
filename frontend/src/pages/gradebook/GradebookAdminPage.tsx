@@ -157,6 +157,21 @@ export default function GradebookAdminPage() {
           <p className="text-sm text-gray-500 mt-1">Assign weighted gradebooks to class, subject, and teacher</p>
         </div>
         <div className="flex gap-2">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={async () => {
+              try {
+                const res = await api.post('/gradebook/promote', { session_id: form.session_id || null });
+                toast.success(`Promoted ${res.data.promoted || 0} student(s) with 70%+ yearly average`);
+                qc.invalidateQueries({ queryKey: ['students'] });
+              } catch (e: any) {
+                toast.error(e.response?.data?.error || 'Promotion failed');
+              }
+            }}
+          >
+            Promote eligible (70%+)
+          </button>
           <button type="button" className="btn-secondary" onClick={downloadTemplate}>CSV template</button>
           <label className="btn-secondary cursor-pointer">
             Import CSV/Excel

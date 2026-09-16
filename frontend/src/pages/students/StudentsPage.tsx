@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Plus, Search, Edit2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '../../utils/api';
-import RecordView from '../../components/common/RecordView';
 import RecordActions from '../../components/common/RecordActions';
+import GradesheetView, { printGradesheet, GradesheetData } from '../../components/gradesheet/GradesheetView';
 import { PaginatedResponse, Student, Class, Branch } from '../../types';
 
 export default function StudentsPage() {
@@ -13,6 +14,7 @@ export default function StudentsPage() {
   const [classFilter, setClassFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
   const [viewId, setViewId] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<GradesheetData | null>(null);
 
   const { data: studentsData, isLoading } = useQuery<PaginatedResponse<Student>>({
     queryKey: ['students', page, search, classFilter, branchFilter],
@@ -38,6 +40,44 @@ export default function StudentsPage() {
   });
 
   const totalPages = Math.ceil((studentsData?.total || 0) / 20);
+
+  const openGradesheet = async (mode: 'term' | 'year', termId?: string) => {
+    if (!viewId) return;
+    try {
+      const res = await api.get(`/gradebook/gradesheet/${viewId}`, {
+        params: { mode, term_id: termId || undefined },
+      });
+      setSheet(res.data);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Could not load gradesheet');
+    }
+  };
+
+  const openPriorFile = async (recordId: string) => {
+    if (!viewId) return;
+    try {
+      const res = await api.get(`/students/${viewId}/prior-records/${recordId}/file`);
+      const data = res.data;
+      if (!data?.file_data) {
+        toast.error('No file attached');
+        return;
+      }
+      if (String(data.mime_type || '').includes('json')) {
+        try {
+          setSheet(JSON.parse(data.file_data));
+          return;
+        } catch {
+          // fall through to download
+        }
+      }
+      const link = document.createElement('a');
+      link.href = data.file_data;
+      link.download = data.file_name || 'student-record';
+      link.click();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Could not open file');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -132,7 +172,7 @@ export default function StudentsPage() {
                     </td>
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-3">
-                        <button type="button" className="text-primary-600 text-sm" onClick={() => setViewId(student.id)}>View</button>
+                        <button type="button" className="text-primary-600 text-sm" onClick={() => { setSheet(null); setViewId(student.id); }}>View</button>
                         <RecordActions resource="students" id={student.id} label={`${student.first_name} ${student.last_name}`} invalidate={['students']} />
                         <Link to={`/students/${student.id}/edit`} className="text-gray-400 hover:text-primary-600">
                           <Edit2 size={15} />
@@ -170,25 +210,111 @@ export default function StudentsPage() {
           </div>
         )}
       </div>
+
       {viewed && viewId && (
-        <RecordView
-          title={`${viewed.first_name || ''} ${viewed.last_name || ''}`.trim() || 'Student'}
-          onClose={() => setViewId(null)}
-          fields={[
-            { label: 'Admission number', value: viewed.admission_number },
-            { label: 'Class', value: viewed.class_name },
-            { label: 'Section', value: viewed.section_name },
-            { label: 'Session', value: viewed.session_name },
-            { label: 'Gender', value: viewed.gender },
-            { label: 'Date of birth', value: viewed.date_of_birth },
-            { label: 'Phone', value: viewed.phone },
-            { label: 'Email', value: viewed.email },
-            { label: 'Address', value: viewed.address },
-            { label: 'Status', value: viewed.status },
-            { label: 'Parents', value: viewed.parents },
-          ]}
-        />
+        <div className="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl my-8">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">{viewed.first_name} {viewed.last_name}</h2>
+                <p className="text-sm text-gray-500">{viewed.admission_number} · {viewed.class_name || 'No class'}</p>
+              </div>
+              <button type="button" className="btn-secondary" onClick={() => { setViewId(null); setSheet(null); }}>Close</button>
+            </div>
+            <div className="p-5 space-y-6">
+              <section>
+                <h3 className="font-medium text-gray-900 mb-2">Personal information</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                  <Info label="Gender" value={viewed.gender} />
+                  <Info label="Date of birth" value={viewed.date_of_birth} />
+                  <Info label="Phone" value={viewed.phone} />
+                  <Info label="Email" value={viewed.email} />
+                  <Info label="Address" value={viewed.address} />
+                  <Info label="Status" value={viewed.status} />
+                </div>
+              </section>
+              <section>
+                <h3 className="font-medium text-gray-900 mb-2">Academic information</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                  <Info label="Class" value={viewed.class_name} />
+                  <Info label="Section" value={viewed.section_name} />
+                  <Info label="Session" value={viewed.session_name} />
+                  <Info label="Previous school" value={viewed.previous_school} />
+                  <Info label="Previous class" value={viewed.previous_class} />
+                  <Info label="Branch" value={viewed.branch_name} />
+                </div>
+              </section>
+              <section>
+                <h3 className="font-medium text-gray-900 mb-2">Parents / guardians</h3>
+                {(viewed.parents || []).length ? (
+                  <ul className="text-sm space-y-1">
+                    {viewed.parents.map((parent: any) => (
+                      <li key={parent.id}>{parent.first_name} {parent.last_name} ({parent.relationship}) {parent.phone ? `· ${parent.phone}` : ''}</li>
+                    ))}
+                  </ul>
+                ) : <p className="text-sm text-gray-400">No parents linked</p>}
+              </section>
+              <section>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <h3 className="font-medium text-gray-900">Gradesheets</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="btn-secondary text-sm" onClick={() => openGradesheet('year')}>Yearly gradesheet</button>
+                    {(viewed.available_terms || []).slice(0, 4).map((term: any) => (
+                      <button key={term.id} type="button" className="btn-secondary text-sm" onClick={() => openGradesheet('term', term.id)}>
+                        {term.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {sheet ? (
+                  <div className="border rounded-lg p-3">
+                    <div className="flex justify-end mb-2">
+                      <button type="button" className="btn-primary text-sm" onClick={() => printGradesheet(sheet)}>Download PDF</button>
+                    </div>
+                    <GradesheetView sheet={sheet} />
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">Preview a term or yearly gradesheet above.</p>
+                )}
+              </section>
+              <section>
+                <h3 className="font-medium text-gray-900 mb-2">Transfer / prior records</h3>
+                {(viewed.prior_records || []).length ? (
+                  <div className="space-y-2">
+                    {viewed.prior_records.map((record: any) => (
+                      <div key={record.id} className="flex items-center justify-between border rounded-lg px-3 py-2 text-sm">
+                        <div>
+                          <p className="font-medium text-gray-900">{record.title || record.record_type}</p>
+                          <p className="text-gray-500 capitalize">{String(record.record_type || '').replace(/_/g, ' ')}
+                            {record.class_name ? ` · ${record.class_name}` : ''}
+                            {record.school_name ? ` · ${record.school_name}` : ''}
+                          </p>
+                        </div>
+                        {record.has_file ? (
+                          <button type="button" className="text-primary-600" onClick={() => openPriorFile(record.id)}>
+                            {String(record.mime_type || '').includes('json') ? 'Preview' : 'Download'}
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">No transfer transcripts or prior class gradesheets on file.</p>
+                )}
+              </section>
+            </div>
+          </div>
+        </div>
       )}
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div>
+      <p className="text-xs text-gray-400">{label}</p>
+      <p className="text-gray-800 capitalize">{value || '—'}</p>
     </div>
   );
 }

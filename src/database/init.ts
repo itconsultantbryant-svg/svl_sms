@@ -3,6 +3,7 @@ import path from 'path';
 import { schemaV2Consolidated } from './schema-v2-consolidated';
 import { homeworkAssignmentsSchema } from './schema-homework-assignments';
 import { gradebookLessonPermsSchema } from './schema-gradebook-lesson-perms';
+import { migrateSchoolEnhancements } from './schema-school-enhancements';
 import { ensurePortalRole } from '../utils/userAccess';
 
 let db: Database.Database;
@@ -67,6 +68,7 @@ export function initializeDatabase(): void {
   database.exec(gradebookLessonPermsSchema);
   ensureTenantColumns(database);
   migrateInstitutionBranding(database);
+  migrateSchoolEnhancements();
   backfillUserRoles(database);
 
   console.log('✓ Multi-tenant database initialized successfully');

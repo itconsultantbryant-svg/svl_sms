@@ -5,6 +5,8 @@ import React from 'react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import RecordActions from '../../components/common/RecordActions';
+import { CurrencySelect, useInstitutionCurrency } from '../../components/common/CurrencySelect';
+import { formatMoney } from '../../utils/currency';
 
 type Tab = 'overview' | 'income' | 'expenses' | 'categories' | 'ledger';
 
@@ -51,6 +53,7 @@ export default function AccountsPage() {
 }
 
 function OverviewTab({ dateRange }: { dateRange: any }) {
+  const { institution } = useInstitutionCurrency();
   const { data: report } = useQuery<any>({
     queryKey: ['financial-report', dateRange],
     queryFn: () => api.get('/accounts/report', { params: dateRange }).then(r => r.data),
@@ -61,13 +64,28 @@ function OverviewTab({ dateRange }: { dateRange: any }) {
 
   if (!report) return <div className="text-center py-8 text-gray-400">Loading...</div>;
 
+  const usd = report.by_currency?.USD || {};
+  const lrd = report.by_currency?.LRD || {};
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard label="Total Income" value={report.total_income} icon={<TrendingUp size={20} />} color="green" />
-        <StatCard label="Fee Collections" value={report.fee_collections} icon={<DollarSign size={20} />} color="blue" />
-        <StatCard label="Total Expenses" value={report.total_expenses} icon={<TrendingDown size={20} />} color="red" />
-        <StatCard label="Net Income" value={report.net_income} icon={<DollarSign size={20} />} color={report.net_income >= 0 ? 'green' : 'red'} />
+      <div>
+        <h3 className="text-sm font-medium text-gray-700 mb-3">USD</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <StatCard label="Total Income" value={usd.total_income || 0} currency="USD" institution={institution} icon={<TrendingUp size={20} />} color="green" />
+          <StatCard label="Fee Collections" value={usd.fee_collections || 0} currency="USD" institution={institution} icon={<DollarSign size={20} />} color="blue" />
+          <StatCard label="Total Expenses" value={usd.total_expenses || 0} currency="USD" institution={institution} icon={<TrendingDown size={20} />} color="red" />
+          <StatCard label="Net Income" value={usd.net_income || 0} currency="USD" institution={institution} icon={<DollarSign size={20} />} color={(usd.net_income || 0) >= 0 ? 'green' : 'red'} />
+        </div>
+      </div>
+      <div>
+        <h3 className="text-sm font-medium text-gray-700 mb-3">LRD</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <StatCard label="Total Income" value={lrd.total_income || 0} currency="LRD" institution={institution} icon={<TrendingUp size={20} />} color="green" />
+          <StatCard label="Fee Collections" value={lrd.fee_collections || 0} currency="LRD" institution={institution} icon={<DollarSign size={20} />} color="blue" />
+          <StatCard label="Total Expenses" value={lrd.total_expenses || 0} currency="LRD" institution={institution} icon={<TrendingDown size={20} />} color="red" />
+          <StatCard label="Net Income" value={lrd.net_income || 0} currency="LRD" institution={institution} icon={<DollarSign size={20} />} color={(lrd.net_income || 0) >= 0 ? 'green' : 'red'} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -77,8 +95,8 @@ function OverviewTab({ dateRange }: { dateRange: any }) {
             <div className="space-y-2">
               {report.income_by_category.map((c: any, i: number) => (
                 <div key={i} className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600">{c.category || 'Uncategorized'}</span>
-                  <span className="font-medium">${c.total.toFixed(2)}</span>
+                  <span className="text-gray-600">{c.category || 'Uncategorized'} <span className="text-xs text-gray-400">({c.currency_code || 'USD'})</span></span>
+                  <span className="font-medium">{formatMoney(c.total, c.currency_code, institution)}</span>
                 </div>
               ))}
             </div>
@@ -91,48 +109,23 @@ function OverviewTab({ dateRange }: { dateRange: any }) {
             <div className="space-y-2">
               {report.expense_by_category.map((c: any, i: number) => (
                 <div key={i} className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600">{c.category || 'Uncategorized'}</span>
-                  <span className="font-medium">${c.total.toFixed(2)}</span>
+                  <span className="text-gray-600">{c.category || 'Uncategorized'} <span className="text-xs text-gray-400">({c.currency_code || 'USD'})</span></span>
+                  <span className="font-medium">{formatMoney(c.total, c.currency_code, institution)}</span>
                 </div>
               ))}
             </div>
           ) : <p className="text-sm text-gray-400">No expenses recorded</p>}
         </div>
       </div>
-
-      {(report.monthly_income?.length > 0 || report.monthly_expenses?.length > 0) && (
-        <div className="card">
-          <h3 className="font-medium text-gray-900 mb-3">Monthly Summary</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left py-2 px-3 font-medium text-gray-500">Month</th>
-                  <th className="text-right py-2 px-3 font-medium text-green-600">Income</th>
-                  <th className="text-right py-2 px-3 font-medium text-red-600">Expenses</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.monthly_income.map((m: any, i: number) => (
-                  <tr key={i} className="border-b border-gray-100">
-                    <td className="py-2 px-3">{m.month}</td>
-                    <td className="py-2 px-3 text-right text-green-600">${m.total.toFixed(2)}</td>
-                    <td className="py-2 px-3 text-right text-red-600">${(report.monthly_expenses.find((e: any) => e.month === m.month)?.total || 0).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
 function IncomeTab({ dateRange, showForm, setShowForm }: { dateRange: any; showForm: boolean; setShowForm: (v: boolean) => void }) {
   const queryClient = useQueryClient();
+  const { institution, defaultCode } = useInstitutionCurrency();
   const [page, setPage] = useState(1);
-  const [form, setForm] = useState({ category_id: '', amount: '', date: '', description: '', payment_method: 'cash', reference: '' });
+  const [form, setForm] = useState({ category_id: '', amount: '', date: '', description: '', payment_method: 'cash', reference: '', currency_code: 'USD' });
 
   const { data: categories } = useQuery<any[]>({
     queryKey: ['income-categories'],
@@ -146,7 +139,16 @@ function IncomeTab({ dateRange, showForm, setShowForm }: { dateRange: any; showF
 
   const addMutation = useMutation({
     mutationFn: (data: any) => api.post('/accounts/income', data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['income'] }); queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] }); queryClient.invalidateQueries({ queryKey: ['dashboard-finance'] }); queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }); queryClient.invalidateQueries({ queryKey: ['financial-report'] }); toast.success('Income recorded'); setShowForm(false); setForm({ category_id: '', amount: '', date: '', description: '', payment_method: 'cash', reference: '' }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['income'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-finance'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-report'] });
+      toast.success('Income recorded');
+      setShowForm(false);
+      setForm({ category_id: '', amount: '', date: '', description: '', payment_method: 'cash', reference: '', currency_code: defaultCode });
+    },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed'),
   });
 
@@ -165,8 +167,9 @@ function IncomeTab({ dateRange, showForm, setShowForm }: { dateRange: any; showF
                 {(Array.isArray(categories) ? categories : []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
+            <CurrencySelect value={form.currency_code || defaultCode} onChange={(code) => setForm((f) => ({ ...f, currency_code: code }))} />
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount ($) *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
               <input type="number" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="input-field" required />
             </div>
             <div>
@@ -205,6 +208,7 @@ function IncomeTab({ dateRange, showForm, setShowForm }: { dateRange: any; showF
               <th className="text-left py-3 px-3 font-medium text-gray-500">Date</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Category</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Description</th>
+              <th className="text-left py-3 px-3 font-medium text-gray-500">Currency</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Method</th>
               <th className="text-right py-3 px-3 font-medium text-gray-500">Amount</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
@@ -212,16 +216,17 @@ function IncomeTab({ dateRange, showForm, setShowForm }: { dateRange: any; showF
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={7} className="py-12 text-center text-gray-400">Loading...</td></tr>
             ) : !data?.data?.length ? (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400">No income recorded</td></tr>
+              <tr><td colSpan={7} className="py-12 text-center text-gray-400">No income recorded</td></tr>
             ) : data.data.map((item: any) => (
               <tr key={item.id} className="border-b border-gray-100">
                 <td className="py-3 px-3">{item.date}</td>
                 <td className="py-3 px-3">{item.category_name || '-'}</td>
                 <td className="py-3 px-3 text-gray-500">{item.description || '-'}</td>
+                <td className="py-3 px-3">{item.currency_code || 'USD'}</td>
                 <td className="py-3 px-3 capitalize">{item.payment_method?.replace('_', ' ')}</td>
-                <td className="py-3 px-3 text-right font-medium text-green-600">${item.amount.toFixed(2)}</td>
+                <td className="py-3 px-3 text-right font-medium text-green-600">{formatMoney(item.amount, item.currency_code, institution)}</td>
                 <td className="py-3 px-3">
                   <RecordActions resource="income" id={item.id} label="income" invalidate={['income', 'accounts-report', 'finance-dashboard']} fields={[
                     { key: 'amount', label: 'Amount', type: 'number' },
@@ -249,8 +254,9 @@ function IncomeTab({ dateRange, showForm, setShowForm }: { dateRange: any; showF
 
 function ExpensesTab({ dateRange, showForm, setShowForm }: { dateRange: any; showForm: boolean; setShowForm: (v: boolean) => void }) {
   const queryClient = useQueryClient();
+  const { institution, defaultCode } = useInstitutionCurrency();
   const [page, setPage] = useState(1);
-  const [form, setForm] = useState({ category_id: '', amount: '', date: '', description: '', vendor: '', payment_method: 'cash', reference: '' });
+  const [form, setForm] = useState({ category_id: '', amount: '', date: '', description: '', vendor: '', payment_method: 'cash', reference: '', currency_code: 'USD' });
 
   const { data: categories } = useQuery<any[]>({
     queryKey: ['expense-categories'],
@@ -264,7 +270,16 @@ function ExpensesTab({ dateRange, showForm, setShowForm }: { dateRange: any; sho
 
   const addMutation = useMutation({
     mutationFn: (data: any) => api.post('/accounts/expenses', data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['expenses'] }); queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] }); queryClient.invalidateQueries({ queryKey: ['dashboard-finance'] }); queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }); queryClient.invalidateQueries({ queryKey: ['financial-report'] }); toast.success('Expense recorded'); setShowForm(false); setForm({ category_id: '', amount: '', date: '', description: '', vendor: '', payment_method: 'cash', reference: '' }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-finance'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-report'] });
+      toast.success('Expense recorded');
+      setShowForm(false);
+      setForm({ category_id: '', amount: '', date: '', description: '', vendor: '', payment_method: 'cash', reference: '', currency_code: defaultCode });
+    },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed'),
   });
 
@@ -283,8 +298,9 @@ function ExpensesTab({ dateRange, showForm, setShowForm }: { dateRange: any; sho
                 {(Array.isArray(categories) ? categories : []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
+            <CurrencySelect value={form.currency_code || defaultCode} onChange={(code) => setForm((f) => ({ ...f, currency_code: code }))} />
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount ($) *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
               <input type="number" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="input-field" required />
             </div>
             <div>
@@ -323,7 +339,7 @@ function ExpensesTab({ dateRange, showForm, setShowForm }: { dateRange: any; sho
               <th className="text-left py-3 px-3 font-medium text-gray-500">Date</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Category</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Vendor</th>
-              <th className="text-left py-3 px-3 font-medium text-gray-500">Description</th>
+              <th className="text-left py-3 px-3 font-medium text-gray-500">Currency</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Method</th>
               <th className="text-right py-3 px-3 font-medium text-gray-500">Amount</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Actions</th>
@@ -339,9 +355,9 @@ function ExpensesTab({ dateRange, showForm, setShowForm }: { dateRange: any; sho
                 <td className="py-3 px-3">{item.date}</td>
                 <td className="py-3 px-3">{item.category_name || '-'}</td>
                 <td className="py-3 px-3">{item.vendor || '-'}</td>
-                <td className="py-3 px-3 text-gray-500">{item.description || '-'}</td>
+                <td className="py-3 px-3">{item.currency_code || 'USD'}</td>
                 <td className="py-3 px-3 capitalize">{item.payment_method?.replace('_', ' ')}</td>
-                <td className="py-3 px-3 text-right font-medium text-red-600">${item.amount.toFixed(2)}</td>
+                <td className="py-3 px-3 text-right font-medium text-red-600">{formatMoney(item.amount, item.currency_code, institution)}</td>
                 <td className="py-3 px-3">
                   <RecordActions resource="expenses" id={item.id} label="expense" invalidate={['expenses', 'accounts-report', 'finance-dashboard']} fields={[
                     { key: 'amount', label: 'Amount', type: 'number' },
@@ -369,6 +385,7 @@ function ExpensesTab({ dateRange, showForm, setShowForm }: { dateRange: any; sho
 }
 
 function LedgerTab({ dateRange }: { dateRange: any }) {
+  const { institution } = useInstitutionCurrency();
   const { data, isLoading } = useQuery<any>({
     queryKey: ['ledger', dateRange],
     queryFn: () => api.get('/accounts/ledger', { params: dateRange }).then(r => r.data),
@@ -382,14 +399,6 @@ function LedgerTab({ dateRange }: { dateRange: any }) {
 
   return (
     <div className="space-y-4">
-      {data?.totals && (
-        <div className="flex gap-6 text-sm">
-          <span>Total Credit: <strong className="text-green-600">${data.totals.total_credit?.toFixed(2)}</strong></span>
-          <span>Total Debit: <strong className="text-red-600">${data.totals.total_debit?.toFixed(2)}</strong></span>
-          <span>Net: <strong className={(data.totals.total_credit - data.totals.total_debit) >= 0 ? 'text-green-600' : 'text-red-600'}>${(data.totals.total_credit - data.totals.total_debit).toFixed(2)}</strong></span>
-        </div>
-      )}
-
       <div className="card">
         <table className="w-full text-sm">
           <thead>
@@ -397,8 +406,8 @@ function LedgerTab({ dateRange }: { dateRange: any }) {
               <th className="text-left py-3 px-3 font-medium text-gray-500">Date</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Type</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Category</th>
+              <th className="text-left py-3 px-3 font-medium text-gray-500">Currency</th>
               <th className="text-left py-3 px-3 font-medium text-gray-500">Description</th>
-              <th className="text-left py-3 px-3 font-medium text-gray-500">Method</th>
               <th className="text-right py-3 px-3 font-medium text-green-600">Credit</th>
               <th className="text-right py-3 px-3 font-medium text-red-600">Debit</th>
             </tr>
@@ -417,10 +426,10 @@ function LedgerTab({ dateRange }: { dateRange: any }) {
                   </span>
                 </td>
                 <td className="py-3 px-3">{e.category || '-'}</td>
+                <td className="py-3 px-3">{e.currency_code || 'USD'}</td>
                 <td className="py-3 px-3 text-gray-500">{e.description || '-'}</td>
-                <td className="py-3 px-3 capitalize">{e.payment_method?.replace('_', ' ') || '-'}</td>
-                <td className="py-3 px-3 text-right text-green-600">{e.credit > 0 ? `$${e.credit.toFixed(2)}` : '-'}</td>
-                <td className="py-3 px-3 text-right text-red-600">{e.debit > 0 ? `$${e.debit.toFixed(2)}` : '-'}</td>
+                <td className="py-3 px-3 text-right text-green-600">{e.credit > 0 ? formatMoney(e.credit, e.currency_code, institution) : '-'}</td>
+                <td className="py-3 px-3 text-right text-red-600">{e.debit > 0 ? formatMoney(e.debit, e.currency_code, institution) : '-'}</td>
               </tr>
             ))}
           </tbody>
@@ -488,7 +497,7 @@ function CategoriesTab() {
   );
 }
 
-function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
+function StatCard({ label, value, icon, color, currency, institution }: { label: string; value: number; icon: React.ReactNode; color: string; currency: string; institution?: any }) {
   const colors: Record<string, string> = {
     green: 'bg-green-50 text-green-600',
     red: 'bg-red-50 text-red-600',
@@ -499,7 +508,7 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
       <div className={`p-3 rounded-lg ${colors[color] || colors.blue}`}>{icon}</div>
       <div>
         <p className="text-sm text-gray-500">{label}</p>
-        <p className="text-xl font-bold">${(value || 0).toFixed(2)}</p>
+        <p className="text-xl font-bold">{formatMoney(value || 0, currency, institution)}</p>
       </div>
     </div>
   );

@@ -87,11 +87,12 @@ accountsRouter.get('/income', (req: AuthRequest, res: Response) => {
 });
 
 accountsRouter.post('/income', authorize(...FINANCE_ROLES), (req: AuthRequest, res: Response) => {
-  const { category_id, branch_id, amount, date, description, reference, payment_method } = req.body;
+  const { category_id, branch_id, amount, date, description, reference, payment_method, currency_code } = req.body;
   if (!amount || !date) { res.status(400).json({ error: 'Amount and date are required' }); return; }
   const db = getDatabase();
   const id = generateId();
-  db.prepare(`INSERT INTO income (id, institution_id, category_id, branch_id, amount, date, description, reference, payment_method, received_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.institution_id, category_id || null, branch_id || null, amount, date, description || null, reference || null, payment_method || 'cash', req.user?.id || null);
+  const currency = String(currency_code || 'USD').toUpperCase() === 'LRD' ? 'LRD' : 'USD';
+  db.prepare(`INSERT INTO income (id, institution_id, category_id, branch_id, amount, date, description, reference, payment_method, received_by, currency_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.institution_id, category_id || null, branch_id || null, amount, date, description || null, reference || null, payment_method || 'cash', req.user?.id || null, currency);
   res.status(201).json({ id, message: 'Income recorded successfully' });
 });
 
@@ -125,11 +126,12 @@ accountsRouter.get('/expenses', (req: AuthRequest, res: Response) => {
 });
 
 accountsRouter.post('/expenses', authorize(...FINANCE_ROLES), (req: AuthRequest, res: Response) => {
-  const { category_id, branch_id, amount, date, description, reference, vendor, payment_method } = req.body;
+  const { category_id, branch_id, amount, date, description, reference, vendor, payment_method, currency_code } = req.body;
   if (!amount || !date) { res.status(400).json({ error: 'Amount and date are required' }); return; }
   const db = getDatabase();
   const id = generateId();
-  db.prepare(`INSERT INTO expenses (id, institution_id, category_id, branch_id, amount, date, description, reference, vendor, payment_method, approved_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.institution_id, category_id || null, branch_id || null, amount, date, description || null, reference || null, vendor || null, payment_method || 'cash', req.user?.id || null);
+  const currency = String(currency_code || 'USD').toUpperCase() === 'LRD' ? 'LRD' : 'USD';
+  db.prepare(`INSERT INTO expenses (id, institution_id, category_id, branch_id, amount, date, description, reference, vendor, payment_method, approved_by, currency_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.institution_id, category_id || null, branch_id || null, amount, date, description || null, reference || null, vendor || null, payment_method || 'cash', req.user?.id || null, currency);
   res.status(201).json({ id, message: 'Expense recorded successfully' });
 });
 
@@ -151,30 +153,59 @@ accountsRouter.get('/report', (req: AuthRequest, res: Response) => {
 
   const feeCollections = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE institution_id = ? AND (status = 'completed' OR status IS NULL) ${dateFilter.replace(/date/g, 'payment_date')}`).get(req.institution_id, ...params.slice(1)) as any;
 
+  const incomeByCurrency = db.prepare(`
+    SELECT COALESCE(currency_code, 'USD') as currency_code, COALESCE(SUM(amount), 0) as total
+    FROM income WHERE institution_id = ? ${dateFilter} ${branchFilter}
+    GROUP BY COALESCE(currency_code, 'USD')
+  `).all(...params, ...branchParams) as any[];
+  const expenseByCurrency = db.prepare(`
+    SELECT COALESCE(currency_code, 'USD') as currency_code, COALESCE(SUM(amount), 0) as total
+    FROM expenses WHERE institution_id = ? ${dateFilter} ${branchFilter}
+    GROUP BY COALESCE(currency_code, 'USD')
+  `).all(...params, ...branchParams) as any[];
+  const feesByCurrency = db.prepare(`
+    SELECT COALESCE(currency_code, 'USD') as currency_code, COALESCE(SUM(amount), 0) as total
+    FROM payments WHERE institution_id = ? AND (status = 'completed' OR status IS NULL) ${dateFilter.replace(/date/g, 'payment_date')}
+    GROUP BY COALESCE(currency_code, 'USD')
+  `).all(req.institution_id, ...params.slice(1)) as any[];
+
+  const byCurrency: Record<string, any> = {};
+  for (const code of ['USD', 'LRD']) {
+    const income = Number(incomeByCurrency.find((row) => row.currency_code === code)?.total || 0);
+    const expenses = Number(expenseByCurrency.find((row) => row.currency_code === code)?.total || 0);
+    const fees = Number(feesByCurrency.find((row) => row.currency_code === code)?.total || 0);
+    byCurrency[code] = {
+      total_income: income,
+      total_expenses: expenses,
+      fee_collections: fees,
+      net_income: income + fees - expenses,
+    };
+  }
+
   const incomeByCategory = db.prepare(`
-    SELECT ic.name as category, COALESCE(SUM(i.amount), 0) as total
+    SELECT ic.name as category, COALESCE(i.currency_code, 'USD') as currency_code, COALESCE(SUM(i.amount), 0) as total
     FROM income i LEFT JOIN income_categories ic ON i.category_id = ic.id
     WHERE i.institution_id = ? ${dateFilter.replace(/date/g, 'i.date')} ${branchFilter.replace('branch_id', 'i.branch_id')}
-    GROUP BY ic.name ORDER BY total DESC
+    GROUP BY ic.name, COALESCE(i.currency_code, 'USD') ORDER BY total DESC
   `).all(...params, ...branchParams);
 
   const expenseByCategory = db.prepare(`
-    SELECT ec.name as category, COALESCE(SUM(e.amount), 0) as total
+    SELECT ec.name as category, COALESCE(e.currency_code, 'USD') as currency_code, COALESCE(SUM(e.amount), 0) as total
     FROM expenses e LEFT JOIN expense_categories ec ON e.category_id = ec.id
     WHERE e.institution_id = ? ${dateFilter.replace(/date/g, 'e.date')} ${branchFilter.replace('branch_id', 'e.branch_id')}
-    GROUP BY ec.name ORDER BY total DESC
+    GROUP BY ec.name, COALESCE(e.currency_code, 'USD') ORDER BY total DESC
   `).all(...params, ...branchParams);
 
   const monthlyIncome = db.prepare(`
-    SELECT strftime('%Y-%m', date) as month, COALESCE(SUM(amount), 0) as total
+    SELECT strftime('%Y-%m', date) as month, COALESCE(currency_code, 'USD') as currency_code, COALESCE(SUM(amount), 0) as total
     FROM income WHERE institution_id = ? ${dateFilter} ${branchFilter}
-    GROUP BY month ORDER BY month
+    GROUP BY month, COALESCE(currency_code, 'USD') ORDER BY month
   `).all(...params, ...branchParams);
 
   const monthlyExpenses = db.prepare(`
-    SELECT strftime('%Y-%m', date) as month, COALESCE(SUM(amount), 0) as total
+    SELECT strftime('%Y-%m', date) as month, COALESCE(currency_code, 'USD') as currency_code, COALESCE(SUM(amount), 0) as total
     FROM expenses WHERE institution_id = ? ${dateFilter} ${branchFilter}
-    GROUP BY month ORDER BY month
+    GROUP BY month, COALESCE(currency_code, 'USD') ORDER BY month
   `).all(...params, ...branchParams);
 
   res.json({
@@ -182,6 +213,7 @@ accountsRouter.get('/report', (req: AuthRequest, res: Response) => {
     total_expenses: totalExpenses.total,
     fee_collections: feeCollections.total,
     net_income: totalIncome.total + feeCollections.total - totalExpenses.total,
+    by_currency: byCurrency,
     income_by_category: incomeByCategory,
     expense_by_category: expenseByCategory,
     monthly_income: monthlyIncome,
@@ -202,19 +234,19 @@ accountsRouter.get('/ledger', (req: AuthRequest, res: Response) => {
 
   const entries = db.prepare(`
     SELECT * FROM (
-      SELECT i.date, 'income' as type, ic.name as category, i.description, i.amount as credit, 0 as debit, i.payment_method, i.reference
+      SELECT i.date, 'income' as type, ic.name as category, i.description, i.amount as credit, 0 as debit, i.payment_method, i.reference, COALESCE(i.currency_code, 'USD') as currency_code
       FROM income i LEFT JOIN income_categories ic ON i.category_id = ic.id
-      WHERE 1=1 ${dateFilter.replace(/date/g, 'i.date')}
+      WHERE i.institution_id = ? ${dateFilter.replace(/date/g, 'i.date')}
       UNION ALL
-      SELECT e.date, 'expense' as type, ec.name as category, e.description, 0 as credit, e.amount as debit, e.payment_method, e.reference
+      SELECT e.date, 'expense' as type, ec.name as category, e.description, 0 as credit, e.amount as debit, e.payment_method, e.reference, COALESCE(e.currency_code, 'USD') as currency_code
       FROM expenses e LEFT JOIN expense_categories ec ON e.category_id = ec.id
-      WHERE 1=1 ${dateFilter.replace(/date/g, 'e.date')}
+      WHERE e.institution_id = ? ${dateFilter.replace(/date/g, 'e.date')}
       UNION ALL
-      SELECT p.payment_date as date, 'fee_payment' as type, 'Fee Collection' as category, 'Payment: ' || p.payment_number as description, p.amount as credit, 0 as debit, p.payment_method, p.reference_number as reference
-      FROM payments p WHERE p.status = 'completed' ${dateFilter.replace(/date/g, 'p.payment_date')}
+      SELECT p.payment_date as date, 'fee_payment' as type, 'Fee Collection' as category, 'Payment: ' || p.payment_number as description, p.amount as credit, 0 as debit, p.payment_method, p.reference_number as reference, COALESCE(p.currency_code, 'USD') as currency_code
+      FROM payments p WHERE p.institution_id = ? AND p.status = 'completed' ${dateFilter.replace(/date/g, 'p.payment_date')}
     ) ORDER BY date DESC
     LIMIT ? OFFSET ?
-  `).all(...params, ...params, ...params, lim, offset);
+  `).all(req.institution_id, ...params, req.institution_id, ...params, req.institution_id, ...params, lim, offset);
 
   const totals = db.prepare(`
     SELECT

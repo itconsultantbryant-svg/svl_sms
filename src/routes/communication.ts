@@ -201,8 +201,8 @@ communicationRouter.get('/announcements', (req: AuthRequest, res: Response) => {
   const { page = '1', limit = '20', type, audience, published } = req.query as any;
   const { limit: lim, offset } = paginate(parseInt(page), parseInt(limit));
 
-  let where = 'WHERE 1=1';
-  const params: any[] = [];
+  let where = 'WHERE a.institution_id = ?';
+  const params: any[] = [req.institution_id];
   if (type) { where += ' AND a.type = ?'; params.push(type); }
   if (audience) { where += ' AND a.audience = ?'; params.push(audience); }
   if (published !== undefined) { where += ' AND a.is_published = ?'; params.push(parseInt(published)); }
@@ -219,20 +219,39 @@ communicationRouter.get('/announcements', (req: AuthRequest, res: Response) => {
 });
 
 communicationRouter.post('/announcements', authorize('platform_admin', 'institution_admin', 'branch_admin', 'principal'), (req: AuthRequest, res: Response) => {
-  const { title, content, type, priority, audience, audience_id, expires_at, is_published } = req.body;
+  const { title, content, type, priority, audience, audience_id, expires_at, is_published, require_ack } = req.body;
   if (!title || !content) {
     res.status(400).json({ error: 'Title and content are required' });
+    return;
+  }
+  if (!req.institution_id) {
+    res.status(400).json({ error: 'Select a school first' });
     return;
   }
 
   const db = getDatabase();
   const id = generateId();
   const published = is_published ? 1 : 0;
-  db.prepare(`INSERT INTO announcements (id, title, content, type, priority, audience, audience_id, expires_at, is_published, published_at, created_by, branch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, title, content, type || 'general', priority || 'normal',
-    audience || 'all', audience_id || null, expires_at || null,
-    published, published ? new Date().toISOString() : null,
-    req.user?.id || null, req.user?.branch_id || null
+  db.prepare(`
+    INSERT INTO announcements (
+      id, institution_id, title, content, type, priority, audience, audience_id,
+      expires_at, is_published, published_at, created_by, branch_id, require_ack
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    req.institution_id,
+    title,
+    content,
+    type || 'general',
+    priority || 'normal',
+    audience || 'all',
+    audience_id || null,
+    expires_at || null,
+    published,
+    published ? new Date().toISOString() : null,
+    req.user?.id || null,
+    req.user?.branch_id || null,
+    require_ack === 0 || require_ack === false ? 0 : 1
   );
 
   res.status(201).json({ id, message: 'Announcement created' });

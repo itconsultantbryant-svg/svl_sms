@@ -155,13 +155,15 @@ payrollRouter.post('/employee-salaries', authorize(...PAYROLL_ROLES), (req: Auth
   try {
     const existing = db.prepare('SELECT id FROM employee_salaries WHERE employee_id = ? AND is_active = 1').get(employee_id) as { id: string } | undefined;
     if (existing) {
-      db.prepare(`UPDATE employee_salaries SET institution_id = ?, structure_id = ?, basic_salary = ?, effective_from = ? WHERE id = ?`)
-        .run(institutionId, structure_id, basic_salary, effective_from, existing.id);
+      const currency = String(req.body.currency_code || 'USD').toUpperCase() === 'LRD' ? 'LRD' : 'USD';
+      db.prepare(`UPDATE employee_salaries SET institution_id = ?, structure_id = ?, basic_salary = ?, effective_from = ?, currency_code = ? WHERE id = ?`)
+        .run(institutionId, structure_id, basic_salary, effective_from, currency, existing.id);
       res.json({ id: existing.id, message: 'Salary assigned' });
       return;
     }
     const id = generateId();
-    db.prepare(`INSERT INTO employee_salaries (id, institution_id, employee_id, structure_id, basic_salary, effective_from) VALUES (?, ?, ?, ?, ?, ?)`).run(id, institutionId, employee_id, structure_id, basic_salary, effective_from);
+    const currency = String(req.body.currency_code || 'USD').toUpperCase() === 'LRD' ? 'LRD' : 'USD';
+    db.prepare(`INSERT INTO employee_salaries (id, institution_id, employee_id, structure_id, basic_salary, effective_from, currency_code) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, institutionId, employee_id, structure_id, basic_salary, effective_from, currency);
     res.status(201).json({ id, message: 'Salary assigned' });
   } catch (err: any) {
     dbError(res, err, 'Failed to assign salary');

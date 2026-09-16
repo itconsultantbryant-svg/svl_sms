@@ -225,7 +225,7 @@ function PayslipView({ id, onBack }: { id: string; onBack: () => void }) {
 function SalariesTab() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ employee_id: '', structure_id: '', basic_salary: '', effective_from: '' });
+  const [form, setForm] = useState({ employee_id: '', structure_id: '', basic_salary: '', effective_from: '', currency_code: 'USD' });
 
   const { data: salaries } = useQuery<any[]>({ queryKey: ['employee-salaries'], queryFn: () => api.get('/payroll/employee-salaries').then(r => r.data) });
   const { data: employees } = useQuery<any>({ queryKey: ['employees-payroll'], queryFn: () => api.get('/payroll/employees').then(r => r.data) });
@@ -233,7 +233,7 @@ function SalariesTab() {
 
   const assignMutation = useMutation({
     mutationFn: (d: any) => api.post('/payroll/employee-salaries', d),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['employee-salaries'] }); toast.success('Salary assigned'); setShowForm(false); setForm({ employee_id: '', structure_id: '', basic_salary: '', effective_from: '' }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['employee-salaries'] }); toast.success('Salary assigned'); setShowForm(false); setForm({ employee_id: '', structure_id: '', basic_salary: '', effective_from: '', currency_code: 'USD' }); },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed'),
   });
 
@@ -247,6 +247,13 @@ function SalariesTab() {
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Employee *</label><select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className="input-field"><option value="">Select</option>{employees?.data?.map((e: any) => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}</select></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Structure *</label><select value={form.structure_id} onChange={e => setForm(f => ({ ...f, structure_id: e.target.value }))} className="input-field"><option value="">Select</option>{(Array.isArray(structures) ? structures : []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Basic Salary *</label><input type="number" step="0.01" value={form.basic_salary} onChange={e => setForm(f => ({ ...f, basic_salary: e.target.value }))} className="input-field" /></div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Currency *</label>
+              <select value={form.currency_code} onChange={e => setForm(f => ({ ...f, currency_code: e.target.value }))} className="input-field">
+                <option value="USD">USD ($)</option>
+                <option value="LRD">LRD (L$)</option>
+              </select>
+            </div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Effective From *</label><input type="date" value={form.effective_from} onChange={e => setForm(f => ({ ...f, effective_from: e.target.value }))} className="input-field" /></div>
             <button onClick={() => assignMutation.mutate({ ...form, basic_salary: parseFloat(form.basic_salary) })} disabled={!form.employee_id || !form.structure_id || !form.basic_salary || !form.effective_from} className="btn-primary">Assign</button>
           </div>
