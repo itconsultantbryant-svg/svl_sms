@@ -166,7 +166,13 @@ export function translateSqlite(sql: string): string {
 
   let out = sql;
   out = out.replace(/datetime\s*\(\s*'now'\s*\)/gi, "(CURRENT_TIMESTAMP)::text");
+  out = out.replace(
+    /date\s*\(\s*'now'\s*,\s*'([+-]?\d+)\s+(day|days|month|months|year|years)'\s*\)/gi,
+    (_match, amount, unit) => `((CURRENT_DATE + INTERVAL '${amount} ${unit}'))::text`
+  );
   out = out.replace(/date\s*\(\s*'now'\s*\)/gi, "(CURRENT_DATE)::text");
+  out = out.replace(/\bdate\s*\(\s*([A-Za-z_][\w.]*)\s*\)/gi, 'substring(($1)::text from 1 for 10)');
+  out = out.replace(/strftime\s*\(\s*'%Y-%m'\s*,\s*'now'\s*\)/gi, "to_char(CURRENT_DATE, 'YYYY-MM')");
   out = out.replace(/strftime\s*\(\s*'%Y-%m'\s*,\s*([^)]+)\)/gi, 'substring(($1)::text from 1 for 7)');
   out = out.replace(/\bAUTOINCREMENT\b/gi, '');
   out = out.replace(/\bCOLLATE\s+NOCASE\b/gi, '');
