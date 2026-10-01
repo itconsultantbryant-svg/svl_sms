@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { initializeDatabase } from './database/init';
+import { databaseDriver, initializeDatabase } from './database/init';
 import { ensureAdminUser } from './database/ensure-admin';
 import { authRouter } from './routes/auth';
 import { usersRouter } from './routes/users';
@@ -92,13 +92,30 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check endpoint (no auth required)
 app.get('/api/health', (req, res) => {
+  let database = databaseDriver();
+  let institutions = 0;
+  try {
+    const row = getHealthCount();
+    institutions = Number(row?.count || 0);
+  } catch (err: any) {
+    database = `${database}:error`;
+    console.error('Health database check failed:', err.message || err);
+  }
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    database: databaseDriver(),
+    database_status: database,
+    institutions,
   });
 });
+
+function getHealthCount() {
+  const { getDatabase } = require('./database/init');
+  return getDatabase().prepare('SELECT COUNT(*) as count FROM institutions').get();
+}
 
 // Auth routes (no auth middleware)
 app.use('/api/auth', authRouter);

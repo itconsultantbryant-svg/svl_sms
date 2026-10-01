@@ -5,9 +5,8 @@ import axios from 'axios';
 // real backend URL (with its dynamically assigned port) is fetched from the main
 // process at runtime via the preload bridge (window.api.getApiUrl()).
 const buildTimeUrl = (import.meta.env.VITE_API_URL || '').trim();
-// Hosted web always calls /api on the same address the user opened (Vercel or
-// *.softwarevalalib.app). Vercel proxies that to Render. Browsers must not call
-// onrender.com directly — some Liberian mobile networks (Orange) cannot reach it.
+// Hosted web calls /api on the same address the user opened. The Vercel
+// project serves that API from this repo and stores data in Neon Postgres.
 const fallbackUrl = import.meta.env.PROD ? '/api' : 'http://localhost:3001/api';
 
 function isDesktopShell(): boolean {

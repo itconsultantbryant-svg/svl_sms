@@ -140,13 +140,15 @@ export function assignClassFees(opts: {
           WHERE i.institution_id = ? AND i.student_id = ? AND i.status != 'cancelled'
             AND ii.fee_type_id = ? AND i.session_id = ?
             AND ((? IS NULL AND i.term_id IS NULL) OR i.term_id = ?)
+            AND COALESCE(i.currency_code, 'USD') = ?
         `).get(
           opts.institutionId,
           student.id,
           structure.fee_type_id,
           structure.session_id,
           structure.term_id,
-          structure.term_id
+          structure.term_id,
+          String(structure.currency_code || 'USD').toUpperCase() === 'LRD' ? 'LRD' : 'USD'
         );
         if (legacy) {
           billed.add(key);
