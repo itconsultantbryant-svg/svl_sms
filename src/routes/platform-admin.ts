@@ -632,15 +632,34 @@ platformAdminRouter.get('/dashboard/stats', (req: AuthRequest, res: Response) =>
     WHERE strftime('%Y-%m', date) = strftime('%Y-%m', 'now')
   `).get() as any).v);
 
+  const year = new Date().getFullYear();
+  const yearStart = `${year}-01-01`;
+  const yearEnd = `${year + 1}-01-01`;
+  const billedByMonth = new Map<number, number>();
+  const collectedByMonth = new Map<number, number>();
+  safe(() => {
+    const rows = db.prepare(`
+      SELECT CAST(substr(due_date, 6, 2) AS INTEGER) as month, COALESCE(SUM(total_amount), 0) as v
+      FROM invoices
+      WHERE due_date >= ? AND due_date < ?
+      GROUP BY substr(due_date, 6, 2)
+    `).all(yearStart, yearEnd) as Array<{ month: number; v: number }>;
+    for (const row of rows) billedByMonth.set(Number(row.month), Number(row.v));
+  }, []);
+  safe(() => {
+    const rows = db.prepare(`
+      SELECT CAST(substr(payment_date, 6, 2) AS INTEGER) as month, COALESCE(SUM(amount), 0) as v
+      FROM payments
+      WHERE status = 'completed' AND payment_date >= ? AND payment_date < ?
+      GROUP BY substr(payment_date, 6, 2)
+    `).all(yearStart, yearEnd) as Array<{ month: number; v: number }>;
+    for (const row of rows) collectedByMonth.set(Number(row.month), Number(row.v));
+  }, []);
   const feeSummary = [];
-  for (let i = 0; i < 12; i++) {
-    const month = String(i + 1).padStart(2, '0');
-    const year = new Date().getFullYear();
-    const startDate = `${year}-${month}-01`;
-    const endDate = i < 11 ? `${year}-${String(i + 2).padStart(2, '0')}-01` : `${year + 1}-01-01`;
-    const total = safe(() => (db.prepare(`SELECT COALESCE(SUM(total_amount),0) as v FROM invoices WHERE due_date >= ? AND due_date < ?`).get(startDate, endDate) as any).v);
-    const collected = safe(() => (db.prepare(`SELECT COALESCE(SUM(amount),0) as v FROM payments WHERE status = 'completed' AND payment_date >= ? AND payment_date < ?`).get(startDate, endDate) as any).v);
-    feeSummary.push({ month: i + 1, total, collected, remaining: Math.max(0, Number(total) - Number(collected)) });
+  for (let month = 1; month <= 12; month++) {
+    const total = billedByMonth.get(month) || 0;
+    const collected = collectedByMonth.get(month) || 0;
+    feeSummary.push({ month, total, collected, remaining: Math.max(0, total - collected) });
   }
 
   const institutionsByPlan = db.prepare(`

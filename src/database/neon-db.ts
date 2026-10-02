@@ -165,6 +165,10 @@ export function translateSqlite(sql: string): string {
   }
 
   let out = sql;
+  out = out.replace(
+    /datetime\s*\(\s*'now'\s*,\s*'-'\s*\|\|\s*\?\s*\|\|\s*' days'\s*\)/gi,
+    "((CURRENT_TIMESTAMP - ((?::text) || ' days')::interval))::text"
+  );
   out = out.replace(/datetime\s*\(\s*'now'\s*\)/gi, "(CURRENT_TIMESTAMP)::text");
   out = out.replace(
     /date\s*\(\s*'now'\s*,\s*'([+-]?\d+)\s+(day|days|month|months|year|years)'\s*\)/gi,
