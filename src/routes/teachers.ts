@@ -259,7 +259,7 @@ teachersRouter.post('/:id/assignments', authorize('platform_admin', 'institution
         const existing = db.prepare(`
           SELECT id FROM teacher_assignments
           WHERE employee_id = ? AND class_id = ? AND subject_id = ? AND institution_id = ?
-            AND IFNULL(section_id, '') = IFNULL(?, '') AND IFNULL(session_id, '') = IFNULL(?, '')
+            AND COALESCE(section_id, '') = COALESCE(?, '') AND COALESCE(session_id, '') = COALESCE(?, '')
         `).get(id, cid, sid, req.institution_id, section_id || null, session) as any;
         if (existing) continue;
         const assignId = generateId();
